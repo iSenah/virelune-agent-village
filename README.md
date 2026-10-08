@@ -121,6 +121,19 @@ docs/            Phase 0 report and notes
 
 Experimental agent tasks run in the separate **virelune-sandbox** repository, never in this one.
 
+## Moving around the village
+
+| Action | Mouse | Keyboard |
+| --- | --- | --- |
+| Turn | Left-drag | Q / E |
+| Pan | Right-drag | W A S D or arrow keys |
+| Zoom | Scroll wheel | + / - |
+| Fly to a building | Double-click it, or click a resident in the left panel | |
+| Back to the overview | | Home or 0 |
+| Show or hide panels | | P |
+
+The village lowers its render resolution automatically on slower GPUs and restores it when there is headroom.
+
 ## Art and 3D models
 
 The village uses custom textured models for all six buildings and five residents (Echo, Claude, Codex, Aura, Scribe), listed in `web/assets/models/manifest.json` (see [web/assets/models/README.md](web/assets/models/README.md)). Procedural placeholders show while models load and stay in place for any model that fails to load. Disconnected or unchecked residents are dimmed and their buildings slightly darker; a connected resident is shown at full colour with a soft ring at its feet. There are no work animations unless a real run is in progress. Open `http://127.0.0.1:4317/?stats` for a frame-rate readout.

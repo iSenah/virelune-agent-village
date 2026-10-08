@@ -34,6 +34,13 @@ export class VillageScene {
   private lastStatus = new Map<string, ResidentLike['status']>();
   onSelect: (sel: { building?: string; resident?: string }) => void = () => {};
   private stats: HTMLElement | null = null;
+  private pendingHover: PointerEvent | null = null;
+  private downAt: { x: number; y: number } | null = null;
+  private keys = new Set<string>();
+  private pickProxies: THREE.Mesh[] = [];
+  private proxyMat = new THREE.MeshBasicMaterial({ visible: false });
+  private fpsWindow: number[] = [];
+  private dpr = Math.min(window.devicePixelRatio, 1.5);
   private statFrames = 0;
   private statSince = performance.now();
 
@@ -42,7 +49,7 @@ export class VillageScene {
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    this.renderer.setPixelRatio(this.dpr);
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     // The village is mostly static: re-render shadows only when something moves or a model arrives.
@@ -61,8 +68,14 @@ export class VillageScene {
     this.camera.position.set(0, 70, 82);
     this.controls = new OrbitControls(this.camera, canvas);
     this.controls.target.set(0, 0, 1);
+    // Snappier feel: less drift after letting go, faster zoom, panning across the ground plane.
     this.controls.enableDamping = true;
-    this.controls.minDistance = 18;
+    this.controls.dampingFactor = 0.15;
+    this.controls.rotateSpeed = 0.9;
+    this.controls.zoomSpeed = 1.4;
+    this.controls.panSpeed = 1.1;
+    this.controls.screenSpacePanning = false;
+    this.controls.minDistance = 14;
     this.controls.maxDistance = 130;
     this.controls.maxPolarAngle = Math.PI * 0.43;
     this.hemi = new THREE.HemisphereLight(0xffe7c8, 0x3a2f28, 1.0);
@@ -84,8 +97,21 @@ export class VillageScene {
     this.buildWorld();
     this.setNight(true);
     window.addEventListener('resize', () => this.resize());
-    canvas.addEventListener('pointermove', (e) => this.pick(e, false));
-    canvas.addEventListener('click', (e) => this.pick(e, true));
+    // Hover picking is throttled to one test per frame and skipped while dragging the camera.
+    canvas.addEventListener('pointermove', (e) => {
+      if (e.buttons) return;
+      this.pendingHover = e;
+    });
+    canvas.addEventListener('pointerdown', (e) => (this.downAt = { x: e.clientX, y: e.clientY }));
+    canvas.addEventListener('click', (e) => {
+      // A drag that ends over a building is a camera move, not a selection.
+      if (this.downAt && Math.hypot(e.clientX - this.downAt.x, e.clientY - this.downAt.y) > 5) return;
+      this.pick(e, true);
+    });
+    canvas.addEventListener('dblclick', (e) => this.pick(e, true, true));
+    window.addEventListener('keydown', (e) => this.keys.add(e.key.toLowerCase()) && this.onKey(e));
+    window.addEventListener('keyup', (e) => this.keys.delete(e.key.toLowerCase()));
+    window.addEventListener('blur', () => this.keys.clear());
     this.resize();
     if (new URLSearchParams(location.search).has('stats')) {
       // Optional performance readout: http://127.0.0.1:4317/?stats
@@ -118,6 +144,12 @@ export class VillageScene {
       const b = buildBuilding(def);
       this.buildings.set(def.id, b);
       this.scene.add(b.group);
+      // Cheap invisible box for picking (testing the detailed models' triangles on every mouse move is very slow).
+      const proxy = new THREE.Mesh(new THREE.BoxGeometry(def.w + 1.2, 9, def.d + 1.2), this.proxyMat);
+      proxy.position.y = 4.5;
+      proxy.userData.buildingId = def.id;
+      b.group.add(proxy);
+      this.pickProxies.push(proxy);
     });
     this.scene.add(landscape(keepout));
     this.loadBuildingModels();
@@ -209,6 +241,12 @@ export class VillageScene {
         fig.position.copy(home);
         fig.rotation.y = b.def.rotY;
         this.scene.add(fig);
+        const proxy = new THREE.Mesh(new THREE.BoxGeometry(1.3, 2.6, 1.3), this.proxyMat);
+        proxy.position.y = 1.3;
+        proxy.scale.setScalar(1 / fig.scale.x);
+        proxy.userData.residentId = r.id;
+        fig.add(proxy);
+        this.pickProxies.push(proxy);
         f = { group: fig, resident: r, home, target: home.clone(), pose: 'home', phase: Math.random() * 6 };
         this.figures.set(r.id, f);
         this.loadCharacterModel(fig, r);
@@ -244,12 +282,13 @@ export class VillageScene {
     }
   }
 
-  private pick(e: PointerEvent | MouseEvent, click: boolean) {
+  private pick(e: PointerEvent | MouseEvent, click: boolean, focus = false) {
     const rect = this.canvas.getBoundingClientRect();
     this.pointer.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
     this.raycaster.setFromCamera(this.pointer, this.camera);
-    const targets = [...[...this.figures.values()].map((f) => f.group), ...[...this.buildings.values()].map((b) => b.group)];
-    const hit = this.raycaster.intersectObjects(targets, true)[0];
+    const hits = this.raycaster.intersectObjects(this.pickProxies, false);
+    // Residents stand in front of their buildings: prefer a resident if one was hit.
+    const hit = hits.find((h) => h.object.userData.residentId) ?? hits[0];
     let resident: string | undefined;
     let building: string | undefined;
     for (let o: THREE.Object3D | null = hit?.object ?? null; o; o = o.parent) {
@@ -260,6 +299,7 @@ export class VillageScene {
     this.canvas.style.cursor = key ? 'pointer' : 'grab';
     if (key !== this.hovered) this.hovered = key;
     if (click && key) this.onSelect({ building: building ?? this.figures.get(resident!)?.resident.building, resident });
+    if (focus && key) this.focusBuilding(building ?? this.figures.get(resident!)!.resident.building);
   }
 
   private camTween: { from: THREE.Vector3; to: THREE.Vector3; tFrom: THREE.Vector3; tTo: THREE.Vector3; start: number } | null = null;
@@ -279,6 +319,68 @@ export class VillageScene {
     this.camTween = { from: this.camera.position.clone(), to: new THREE.Vector3(0, 70, 82), tFrom: this.controls.target.clone(), tTo: new THREE.Vector3(0, 0, 1), start: performance.now() };
   }
 
+  /** Keyboard: WASD / arrows pan, Q / E turn, + / - zoom, Home or 0 returns to the overview. */
+  private onKey(e: KeyboardEvent) {
+    const t = e.target as HTMLElement | null;
+    if (t && /INPUT|TEXTAREA|SELECT/.test(t.tagName)) return;
+    if (e.key === 'Home' || e.key === '0') this.overview();
+  }
+
+  private keyboardMove(dt: number) {
+    const t = document.activeElement as HTMLElement | null;
+    if (!this.keys.size || (t && /INPUT|TEXTAREA|SELECT/.test(t.tagName))) return;
+    const k = this.keys;
+    const dist = this.camera.position.distanceTo(this.controls.target);
+    const forward = new THREE.Vector3().subVectors(this.controls.target, this.camera.position).setY(0).normalize();
+    const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
+    const move = new THREE.Vector3();
+    if (k.has('w') || k.has('arrowup')) move.add(forward);
+    if (k.has('s') || k.has('arrowdown')) move.sub(forward);
+    if (k.has('d') || k.has('arrowright')) move.add(right);
+    if (k.has('a') || k.has('arrowleft')) move.sub(right);
+    if (move.lengthSq()) {
+      move.normalize().multiplyScalar(dist * 0.9 * dt);
+      this.camera.position.add(move);
+      this.controls.target.add(move);
+      this.camTween = null;
+    }
+    const turn = (k.has('e') ? 1 : 0) - (k.has('q') ? 1 : 0);
+    if (turn) {
+      const off = new THREE.Vector3().subVectors(this.camera.position, this.controls.target).applyAxisAngle(new THREE.Vector3(0, 1, 0), turn * dt * 1.4);
+      this.camera.position.copy(this.controls.target).add(off);
+      this.camTween = null;
+    }
+    const zoom = (k.has('-') || k.has('_') ? 1 : 0) - (k.has('=') || k.has('+') ? 1 : 0);
+    if (zoom) {
+      const off = new THREE.Vector3().subVectors(this.camera.position, this.controls.target);
+      const len = THREE.MathUtils.clamp(off.length() * (1 + zoom * dt * 1.5), this.controls.minDistance, this.controls.maxDistance);
+      this.camera.position.copy(this.controls.target).add(off.setLength(len));
+      this.camTween = null;
+    }
+    // keep the view over the village
+    const tgt = this.controls.target;
+    const lim = 45;
+    const clamped = new THREE.Vector3(THREE.MathUtils.clamp(tgt.x, -lim, lim), tgt.y, THREE.MathUtils.clamp(tgt.z, -lim, lim));
+    this.camera.position.add(clamped.clone().sub(tgt));
+    tgt.copy(clamped);
+  }
+
+  /** Lower the render resolution on slower GPUs (and restore it when there is headroom). */
+  private adaptResolution(dt: number) {
+    this.fpsWindow.push(dt);
+    if (this.fpsWindow.length < 90) return;
+    const avg = this.fpsWindow.reduce((a, b) => a + b, 0) / this.fpsWindow.length;
+    this.fpsWindow = [];
+    const fps = 1 / Math.max(avg, 1e-3);
+    const max = Math.min(window.devicePixelRatio, 1.5);
+    const next = fps < 40 ? Math.max(0.75, this.dpr - 0.25) : fps > 57 ? Math.min(max, this.dpr + 0.25) : this.dpr;
+    if (next !== this.dpr) {
+      this.dpr = next;
+      this.renderer.setPixelRatio(next);
+      this.resize();
+    }
+  }
+
   private resize() {
     const w = this.canvas.clientWidth || window.innerWidth;
     const h = this.canvas.clientHeight || window.innerHeight;
@@ -288,8 +390,15 @@ export class VillageScene {
   }
 
   private frame() {
-    const dt = Math.min(this.clock.getDelta(), 0.05);
+    const rawDt = this.clock.getDelta();
+    const dt = Math.min(rawDt, 0.05);
     const t = this.clock.elapsedTime;
+    this.adaptResolution(rawDt);
+    this.keyboardMove(dt);
+    if (this.pendingHover) {
+      this.pick(this.pendingHover, false);
+      this.pendingHover = null;
+    }
     if (this.camTween) {
       const c = this.camTween;
       const t = Math.min(1, (performance.now() - c.start) / 900);

@@ -1,7 +1,6 @@
 // Procedural building kit for the village: stone plinths, cobblestone paths, a star plaza, lanterns,
 // timber-framed houses, towers and signboards. Simple shapes, warm palette, no external assets.
 import * as THREE from '../../vendor/three.module.js';
-import { grassMaterial } from './nature.ts';
 
 export const PALETTE = {
   ground: 0x2b2729,
@@ -95,11 +94,6 @@ export function plinth(w: number, d: number): THREE.Group {
   rim.castShadow = true;
   rim.receiveShadow = true;
   g.add(rim);
-  // A lawn on top of the lot, inside a stone border.
-  const lawn = new THREE.Mesh(new THREE.ShapeGeometry(roundedRect(w - 0.5, d - 0.5, 0.8), 6).rotateX(-Math.PI / 2), grassMaterial(Math.max(w, d) / 6));
-  lawn.position.y = 1.025;
-  lawn.receiveShadow = true;
-  g.add(lawn);
   return g;
 }
 
