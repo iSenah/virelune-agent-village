@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "$comment": "Custom village models. width/height are target sizes in village units; models are scaled to fit and stand on the ground. 'source' is the original file name from the art export. Textures were resized to 1024 px by scripts/optimize_glb.py; geometry is unchanged.",
+  "buildings": {
+    "town-hall": {
+      "file": "buildings/town-hall.glb",
+      "source": "Echo_Building.glb",
+      "width": 10.5
+    },
+    "library": {
+      "file": "buildings/library.glb",
+      "source": "Blue_Building.glb",
+      "width": 8.4
+    },
+    "engineering-forge": {
+      "file": "buildings/engineering-forge.glb",
+      "source": "Codex_Building.glb",
+      "width": 8.4
+    },
+    "unreal-workshop": {
+      "file": "buildings/unreal-workshop.glb",
+      "source": "Aura_Building.glb",
+      "width": 8.4
+    },
+    "blender-house": {
+      "file": "buildings/blender-house.glb",
+      "source": "Claude_Building.glb",
+      "width": 8.4
+    },
+    "post-office": {
+      "file": "buildings/post-office.glb",
+      "source": "Scribe_Building.glb",
+      "width": 6.6
+    }
+  },
+  "characters": {
+    "echo": {
+      "file": "characters/echo.glb",
+      "source": "Echo.glb",
+      "height": 2.1
+    },
+    "claude": {
+      "file": "characters/claude.glb",
+      "source": "Claude.glb",
+      "height": 2.4
+    },
+    "codex": {
+      "file": "characters/codex.glb",
+      "source": "Codex.glb",
+      "height": 2.4
+    },
+    "aura": {
+      "file": "characters/aura.glb",
+      "source": "Aura.glb",
+      "height": 2.6
+    },
+    "scribe": {
+      "file": "characters/scribe.glb",
+      "source": "Scribe.glb",
+      "height": 2.2
+    }
+  }
+}

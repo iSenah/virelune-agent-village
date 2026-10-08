@@ -27,6 +27,10 @@ export type BuildingHandle = {
   chimney: THREE.Vector3 | null;
   doorLocal: THREE.Vector3;
   smoke: THREE.Sprite[];
+  /** The procedural building body: the placeholder until a custom model loads, and the fallback if it fails. */
+  body: THREE.Group;
+  /** The custom GLB model once loaded. */
+  model: THREE.Group | null;
 };
 
 function windowMaterial(): THREE.MeshStandardMaterial {
@@ -256,5 +260,25 @@ export function buildBuilding(def: BuildingDef): BuildingHandle {
       smoke.push(s);
     }
   }
-  return { def, group, windowMat, accentMats, light, sign: sprite, signCanvas: canvas, chimney, doorLocal: new THREE.Vector3(0, 0.95, def.d / 2 + 0.6), smoke };
+  return { def, group, windowMat, accentMats, light, sign: sprite, signCanvas: canvas, chimney, doorLocal: new THREE.Vector3(0, 0.95, def.d / 2 + 0.6), smoke, body, model: null };
+}
+
+/**
+ * Swap the procedural body for a loaded custom model. The plinth, steps, lanterns, sign, light and smoke stay,
+ * so status indicators keep working. The model stands on the plinth top, front (+Z) toward the plaza.
+ */
+export function attachBuildingModel(b: BuildingHandle, model: THREE.Group) {
+  const top = 0.95;
+  model.position.set(0, top, -0.3);
+  model.userData.buildingId = b.def.id;
+  b.group.add(model);
+  b.body.visible = false;
+  b.model = model;
+  const size = model.userData.fittedSize as THREE.Vector3;
+  b.sign.position.y = top + size.y + 2.4;
+  // Smoke rises from near the top of the roof line; it only shows while a real run is active.
+  const chimney = new THREE.Vector3(size.x * 0.22, top + size.y * 0.92, -size.z * 0.15);
+  b.chimney = chimney.clone().sub(new THREE.Vector3(0, top, 0));
+  for (const s of b.smoke) s.position.copy(chimney);
+  b.light.position.set(0, size.y * 0.45, size.z / 2 + 1.2);
 }

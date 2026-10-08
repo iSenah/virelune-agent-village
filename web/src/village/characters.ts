@@ -6,6 +6,7 @@
 // "glow" materials (eyes, crystals) are driven by REAL connection status: lit when connected, dim otherwise.
 import * as THREE from '../../vendor/three.module.js';
 import { glowSprite } from './kit.ts';
+import { modelMaterials } from './models.ts';
 
 type Built = { group: THREE.Group; materials: THREE.MeshStandardMaterial[]; glow: THREE.MeshStandardMaterial[] };
 
@@ -162,8 +163,9 @@ function withSpecialty(base: Built, specialty: 'blender' | 'unreal' | null): Bui
   base.materials.push(mat);
   base.glow.push(mat);
   const emblem = new THREE.Mesh(specialty === 'blender' ? new THREE.BoxGeometry(0.22, 0.22, 0.22) : new THREE.OctahedronGeometry(0.16), mat);
-  emblem.position.set(-0.45, 1.0, 0.35);
+  emblem.position.set(-0.55, 1.0, 0.35);
   emblem.rotation.set(0.6, 0.7, 0);
+  emblem.userData.keepWithModel = true; // stays visible next to the custom model
   base.group.add(emblem);
   return base;
 }
@@ -184,9 +186,37 @@ export function buildCharacter(residentId: string, lineage: string): THREE.Group
   return g;
 }
 
-/** Apply a resident's REAL status: glow and solidity. */
+/**
+ * Swap a resident's procedural placeholder for its custom model. Combination residents (e.g. Codex · Blender)
+ * reuse their runtime's model and keep a small specialty emblem. The placeholder stays as the fallback.
+ */
+export function attachCharacterModel(g: THREE.Group, model: THREE.Group) {
+  const marker = g.userData.marker as THREE.Sprite;
+  for (const child of g.children) {
+    if (child === marker || child.userData.keepWithModel) continue;
+    child.visible = false;
+  }
+  g.add(model);
+  g.userData.model = model;
+  g.userData.modelMats = modelMaterials(model).map((m) => ({ mat: m, base: m.color.clone() }));
+  // The placeholder was scaled up; the model is already fitted, so undo that scale for the model.
+  model.scale.multiplyScalar(1 / g.scale.x);
+  const h = (model.userData.fittedSize as THREE.Vector3).y / g.scale.x;
+  marker.position.y = h + 0.5;
+  // Status ring on the ground: shown only while the resident is really connected.
+  const ring = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.75, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffd27a, transparent: true, opacity: 0.0, depthWrite: false }));
+  ring.position.y = 0.03;
+  g.add(ring);
+  g.userData.ring = ring;
+}
+
+/** Apply a resident's REAL status. Disconnected and unchecked residents look inactive (dimmed, no glow). */
 export function applyCharacterStatus(g: THREE.Group, status: 'untested' | 'disconnected' | 'connected') {
   const opacity = status === 'connected' ? 1 : status === 'disconnected' ? 0.7 : 0.45;
   for (const m of g.userData.materials as THREE.MeshStandardMaterial[]) m.opacity = opacity;
   for (const m of g.userData.glow as THREE.MeshStandardMaterial[]) m.emissiveIntensity = status === 'connected' ? 1.6 : 0.05;
+  const dim = status === 'connected' ? 1 : status === 'disconnected' ? 0.62 : 0.75;
+  for (const { mat, base } of (g.userData.modelMats ?? []) as { mat: THREE.MeshStandardMaterial; base: THREE.Color }[]) mat.color.copy(base).multiplyScalar(dim);
+  const ring = g.userData.ring as THREE.Mesh | undefined;
+  if (ring) (ring.material as THREE.MeshBasicMaterial).opacity = status === 'connected' ? 0.55 : 0;
 }

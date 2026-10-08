@@ -121,10 +121,12 @@ docs/            Phase 0 report and notes
 
 Experimental agent tasks run in the separate **virelune-sandbox** repository, never in this one.
 
-## Art direction
+## Art and 3D models
 
-`docs/concept-art/` holds the reference sheets for the village layout and the residents (Echo the Mayor, Claude the library badger, Codex the brass tinkerer, Aura the crystal golem). The current figures are simple procedural versions of these designs. Their glowing parts (eyes, crystals, Claude's book) light up only when that resident is really connected.
+The village uses custom textured models for all six buildings and five residents (Echo, Claude, Codex, Aura, Scribe), listed in `web/assets/models/manifest.json` (see [web/assets/models/README.md](web/assets/models/README.md)). Procedural placeholders show while models load and stay in place for any model that fails to load. Disconnected or unchecked residents are dimmed and their buildings slightly darker; a connected resident is shown at full colour with a soft ring at its feet. There are no work animations unless a real run is in progress. Open `http://127.0.0.1:4317/?stats` for a frame-rate readout.
+
+`docs/concept-art/` holds the reference sheets for the layout and the residents.
 
 ## Third-party code
 
-`web/vendor/three.module.js` and `web/vendor/OrbitControls.js` are from three.js r170 (MIT, see `web/vendor/THREE_LICENSE.txt`). OrbitControls' import path was changed from `'three'` to the local file.
+`web/vendor/` holds three.js r170 files (MIT, see `web/vendor/THREE_LICENSE.txt`): `three.module.js`, `OrbitControls.js`, `GLTFLoader.js`, `BufferGeometryUtils.js` and `RoomEnvironment.js`. Their import paths were changed from `'three'` to the local files.

@@ -1,9 +1,11 @@
 // The 3D village. Work-related visuals (lit windows, smoke, forge glow, resident poses, approval markers)
 // come only from deriveVisuals(), which reads real backend state. Everything else here is ambient.
 import { OrbitControls } from '../../vendor/OrbitControls.js';
+import { RoomEnvironment } from '../../vendor/RoomEnvironment.js';
 import * as THREE from '../../vendor/three.module.js';
-import { BUILDINGS, buildBuilding, drawSign, type BuildingHandle } from './buildings.ts';
-import { applyCharacterStatus, buildCharacter } from './characters.ts';
+import { attachBuildingModel, BUILDINGS, buildBuilding, drawSign, type BuildingHandle } from './buildings.ts';
+import { applyCharacterStatus, attachCharacterModel, buildCharacter } from './characters.ts';
+import { instantiate, loadManifest, modelMaterials, type ModelManifest } from './models.ts';
 import { lantern, mat, mesh, PALETTE, plaza, road } from './kit.ts';
 import type { BuildingVisual, ResidentLike, ResidentVisual } from './state.ts';
 
@@ -26,21 +28,34 @@ export class VillageScene {
   private hovered: string | null = null;
   private night = true;
   private buildingVisuals = new Map<string, BuildingVisual>();
+  private manifest: Promise<ModelManifest | null> = loadManifest();
+  private shadowDirty = true;
+  private lastStatus = new Map<string, ResidentLike['status']>();
   onSelect: (sel: { building?: string; resident?: string }) => void = () => {};
+  private stats: HTMLElement | null = null;
+  private statFrames = 0;
+  private statSince = performance.now();
 
   private canvas: HTMLCanvasElement;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // The village is mostly static: re-render shadows only when something moves or a model arrives.
+    this.renderer.shadowMap.autoUpdate = false;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.15;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.scene.background = new THREE.Color(PALETTE.ground);
     this.scene.fog = new THREE.Fog(PALETTE.ground, 70, 140);
+    // Soft image-based light so the models' metal and PBR materials (e.g. Codex's brass) read correctly.
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    this.scene.environmentIntensity = 0.45;
+    pmrem.dispose();
     this.camera = new THREE.PerspectiveCamera(30, 1, 0.5, 400);
     this.camera.position.set(0, 66, 74);
     this.controls = new OrbitControls(this.camera, canvas);
@@ -71,6 +86,12 @@ export class VillageScene {
     canvas.addEventListener('pointermove', (e) => this.pick(e, false));
     canvas.addEventListener('click', (e) => this.pick(e, true));
     this.resize();
+    if (new URLSearchParams(location.search).has('stats')) {
+      // Optional performance readout: http://127.0.0.1:4317/?stats
+      this.stats = document.createElement('div');
+      this.stats.style.cssText = 'position:fixed;left:50%;top:84px;transform:translateX(-50%);z-index:9;font:12px monospace;color:#f2e9d8;background:rgba(0,0,0,.6);padding:4px 10px;border-radius:8px';
+      document.body.append(this.stats);
+    }
     this.renderer.setAnimationLoop(() => this.frame());
   }
 
@@ -95,6 +116,39 @@ export class VillageScene {
       this.buildings.set(def.id, b);
       this.scene.add(b.group);
     });
+    this.loadBuildingModels();
+  }
+
+  /** Replace procedural bodies with custom models. On any failure the procedural body simply stays. */
+  private async loadBuildingModels() {
+    const manifest = await this.manifest;
+    if (!manifest) return;
+    for (const [id, b] of this.buildings) {
+      const entry = manifest.buildings[id];
+      if (!entry) continue;
+      instantiate(id, entry)
+        .then((model) => {
+          attachBuildingModel(b, model);
+          b.group.userData.modelMats = modelMaterials(model).map((m) => ({ mat: m, base: m.color.clone() }));
+          this.applyBuildingVisuals();
+          this.shadowDirty = true;
+        })
+        .catch(() => {});
+    }
+  }
+
+  private async loadCharacterModel(fig: THREE.Group, r: ResidentLike) {
+    const manifest = await this.manifest;
+    const entry = manifest?.characters[r.appearance.lineage];
+    if (!entry) return; // no custom model for this resident yet (e.g. Scribe): keep the placeholder
+    try {
+      const model = await instantiate(`character:${r.id}`, entry);
+      attachCharacterModel(fig, model);
+      applyCharacterStatus(fig, this.lastStatus.get(r.id) ?? r.status);
+      this.shadowDirty = true;
+    } catch {
+      /* placeholder stays */
+    }
   }
 
   setNight(night: boolean) {
@@ -140,13 +194,15 @@ export class VillageScene {
         const siblings = residents.filter((x) => x.building === r.building);
         const idx = siblings.findIndex((x) => x.id === r.id);
         const spread = (idx - (siblings.length - 1) / 2) * 1.5;
-        const local = new THREE.Vector3(spread, 0.95, b.def.d / 2 + 0.2);
+        const local = new THREE.Vector3(spread * 1.2, 0.95, b.def.d / 2 + 0.35);
         const home = b.group.localToWorld(local.clone());
         fig.position.copy(home);
         fig.rotation.y = b.def.rotY;
         this.scene.add(fig);
         f = { group: fig, resident: r, home, target: home.clone(), pose: 'home', phase: Math.random() * 6 };
         this.figures.set(r.id, f);
+        this.loadCharacterModel(fig, r);
+        this.shadowDirty = true;
       }
       f.resident = r;
       const v = poseOf.get(r.id);
@@ -159,6 +215,7 @@ export class VillageScene {
         f.target.copy(b.group.localToWorld(b.doorLocal.clone()));
       } else f.target.copy(f.home);
       applyCharacterStatus(f.group, r.status);
+      this.lastStatus.set(r.id, r.status);
       (f.group.userData.marker as THREE.Sprite).visible = f.pose === 'waiting';
     }
   }
@@ -171,6 +228,9 @@ export class VillageScene {
       b.windowMat.color.set(lit ? 0x5a4a30 : 0x2a2f45);
       b.light.intensity = lit && this.night ? 14 : 0;
       for (const m of b.accentMats) m.emissiveIntensity = lit ? 1.4 : 0.05;
+      // Custom models have no separate window meshes, so the whole model reads a little dimmer while inactive.
+      const dim = lit ? 1 : v?.lit === 'unknown' ? 0.85 : 0.72;
+      for (const { mat, base } of (b.group.userData.modelMats ?? []) as { mat: THREE.MeshStandardMaterial; base: THREE.Color }[]) mat.color.copy(base).multiplyScalar(dim);
     }
   }
 
@@ -264,6 +324,7 @@ export class VillageScene {
         pos.add(d.normalize().multiplyScalar(step));
         f.group.rotation.y = Math.atan2(d.x, d.z);
         pos.y = f.target.y + Math.abs(Math.sin(t * 9)) * 0.08; // walking bob
+        this.shadowDirty = true;
       } else if (f.resident.status === 'connected') {
         // idle sway is ambient; it only signals that the resident is connected (a real status)
         f.group.rotation.z = Math.sin(t * 1.4 + f.phase) * 0.03;
@@ -272,6 +333,20 @@ export class VillageScene {
       const marker = f.group.userData.marker as THREE.Sprite;
       if (marker.visible) marker.scale.setScalar(0.8 + Math.sin(t * 4) * 0.12);
     }
+    if (this.shadowDirty) {
+      this.renderer.shadowMap.needsUpdate = true;
+      this.shadowDirty = false;
+    }
     this.renderer.render(this.scene, this.camera);
+    if (this.stats) {
+      this.statFrames++;
+      const now = performance.now();
+      if (now - this.statSince > 1000) {
+        const info = this.renderer.info;
+        this.stats.textContent = `${((this.statFrames * 1000) / (now - this.statSince)).toFixed(0)} fps · ${info.render.calls} draws · ${(info.render.triangles / 1000).toFixed(0)}k tris · ${info.memory.textures} textures`;
+        this.statFrames = 0;
+        this.statSince = now;
+      }
+    }
   }
 }

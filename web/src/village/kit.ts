@@ -28,6 +28,7 @@ export function mat(color: number, opts: { rough?: number; metal?: number; emiss
   let m = matCache.get(key) as THREE.MeshStandardMaterial | undefined;
   if (!m) {
     m = new THREE.MeshStandardMaterial({ color, roughness: opts.rough ?? 0.85, metalness: opts.metal ?? 0, emissive: opts.emissive ?? 0x000000, emissiveIntensity: opts.emissiveIntensity ?? 0, flatShading: true });
+    m.envMapIntensity = 0.3; // the environment light is tuned for the custom models; keep procedural stone matte
     matCache.set(key, m);
   }
   return m;

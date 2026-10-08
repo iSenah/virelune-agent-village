@@ -10,7 +10,7 @@ import { AUTONOMY_LEVELS } from './settings.ts';
 type Handler = (req: http.IncomingMessage, res: http.ServerResponse, params: Record<string, string>, url: URL) => Promise<void> | void;
 
 const MAX_BODY = 1024 * 1024;
-const MIME: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.ts': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml', '.txt': 'text/plain; charset=utf-8' };
+const MIME: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.ts': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml', '.txt': 'text/plain; charset=utf-8', '.glb': 'model/gltf-binary' };
 
 export class HttpError extends Error {
   status: number;
@@ -171,7 +171,7 @@ export function createServer(village: Village): http.Server {
         await r.handler(req, res, params, url);
         return;
       }
-      if (method === 'GET' || method === 'HEAD') return serveStatic(village.config.webDir, url.pathname, res);
+      if (method === 'GET' || method === 'HEAD') return serveStatic(village.config.webDir, url.pathname, res, req);
       throw new HttpError(404, 'not found');
     } catch (e) {
       const status = (e as any).status ?? 500;
@@ -184,7 +184,7 @@ export function createServer(village: Village): http.Server {
 
 const tsCache = new Map<string, { mtime: number; js: string }>();
 
-function serveStatic(webDir: string, pathname: string, res: http.ServerResponse) {
+function serveStatic(webDir: string, pathname: string, res: http.ServerResponse, req?: http.IncomingMessage) {
   const rel = decodeURIComponent(pathname === '/' ? '/index.html' : pathname);
   const file = path.resolve(webDir, '.' + rel);
   if (!file.startsWith(path.resolve(webDir) + path.sep)) throw new HttpError(403, 'forbidden');
@@ -197,7 +197,7 @@ function serveStatic(webDir: string, pathname: string, res: http.ServerResponse)
   if (!stat.isFile()) throw new HttpError(404, 'not found');
   const ext = path.extname(file);
   const headers: Record<string, string> = { 'content-type': MIME[ext] ?? 'application/octet-stream', 'cache-control': 'no-cache', 'x-content-type-options': 'nosniff' };
-  if (ext === '.html') headers['content-security-policy'] = "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'";
+  if (ext === '.html') headers['content-security-policy'] = "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' blob:";
   if (ext === '.ts') {
     // The browser app is written in TypeScript and served as JavaScript via Node's built-in type stripping.
     let c = tsCache.get(file);
@@ -209,6 +209,15 @@ function serveStatic(webDir: string, pathname: string, res: http.ServerResponse)
     res.end(c.js);
     return;
   }
+  // Large assets (the GLB models) are revalidated cheaply instead of re-downloaded on every load.
+  const etag = `"${stat.size.toString(16)}-${Math.floor(stat.mtimeMs).toString(16)}"`;
+  headers.etag = etag;
+  if (req?.headers['if-none-match'] === etag) {
+    res.writeHead(304, headers);
+    res.end();
+    return;
+  }
+  headers['content-length'] = String(stat.size);
   res.writeHead(200, headers);
   fs.createReadStream(file).pipe(res);
 }

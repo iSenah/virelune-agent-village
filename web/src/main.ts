@@ -25,6 +25,15 @@ let selected: { building?: string; resident?: string } | null = null;
 async function boot() {
   try {
     const { VillageScene } = await import('./village/scene.ts');
+    const { onModelStatus } = await import('./village/models.ts');
+    onModelStatus((m) => {
+      const badge = $('#models');
+      if (!m.total) return;
+      badge.hidden = false;
+      badge.textContent = m.failed.length ? `Models ${m.loaded}/${m.total} · ${m.failed.length} using placeholder` : m.loaded < m.total ? `Loading models ${m.loaded}/${m.total}` : `Models ${m.loaded}/${m.total}`;
+      badge.className = `live ${m.failed.length ? 'off' : 'on'}`;
+      badge.title = m.failed.length ? `Could not load: ${m.failed.map((f) => `${f.key} (${f.file}: ${f.error})`).join('; ')}. Placeholders are shown instead.` : 'Custom 3D models';
+    });
     scene = new VillageScene($<HTMLCanvasElement>('#village'));
     scene.onSelect = (s) => {
       selected = s;
