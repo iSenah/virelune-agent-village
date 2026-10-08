@@ -17,7 +17,8 @@ export type Resident = {
   provider: string;
   model: string | null;
   building: string;
-  appearance: { lineage: string; color: string };
+  /** figure: false keeps the resident registered but without a figure standing in the village. */
+  appearance: { lineage: string; color: string; figure: boolean };
   tools: ToolGrant[];
   requires: string[];
   focus: boolean;
@@ -152,6 +153,7 @@ export function parseResident(obj: any): { value: Resident | null; errors: strin
   const ap = v.sub('appearance');
   const lineage = ap.str('lineage') ?? 'neutral';
   const color = ap.str('color', { pattern: /^#[0-9a-fA-F]{6}$/ }) ?? '#888888';
+  const figure = ap.bool('figure', true);
   v.errors.push(...ap.errors.map((e) => `appearance.${e}`));
   const toolsRaw = v.raw('tools') ?? [];
   const tools: ToolGrant[] = [];
@@ -170,7 +172,7 @@ export function parseResident(obj: any): { value: Resident | null; errors: strin
   v.errors.push(...b.errors.map((e) => `budget.${e}`));
   if (v.errors.length) return { value: null, errors: v.errors };
   return {
-    value: { id: id!, displayName: displayName!, role: role!, capabilities, runtime: runtime!, provider: provider!, model, building: building!, appearance: { lineage, color }, tools, requires, focus, verification, permissions, budget },
+    value: { id: id!, displayName: displayName!, role: role!, capabilities, runtime: runtime!, provider: provider!, model, building: building!, appearance: { lineage, color, figure }, tools, requires, focus, verification, permissions, budget },
     errors: [],
   };
 }

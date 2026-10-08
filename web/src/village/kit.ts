@@ -1,11 +1,12 @@
 // Procedural building kit for the village: stone plinths, cobblestone paths, a star plaza, lanterns,
 // timber-framed houses, towers and signboards. Simple shapes, warm palette, no external assets.
 import * as THREE from '../../vendor/three.module.js';
+import { grassMaterial } from './nature.ts';
 
 export const PALETTE = {
   ground: 0x2b2729,
-  stoneLight: 0xcbbca8,
-  stone: 0xa89a88,
+  stoneLight: 0xb9ab97,
+  stone: 0x9d8f7d,
   stoneDark: 0x7c7166,
   wall: 0xeadcbc,
   timber: 0x6a4327,
@@ -94,6 +95,11 @@ export function plinth(w: number, d: number): THREE.Group {
   rim.castShadow = true;
   rim.receiveShadow = true;
   g.add(rim);
+  // A lawn on top of the lot, inside a stone border.
+  const lawn = new THREE.Mesh(new THREE.ShapeGeometry(roundedRect(w - 0.5, d - 0.5, 0.8), 6).rotateX(-Math.PI / 2), grassMaterial(Math.max(w, d) / 6));
+  lawn.position.y = 1.025;
+  lawn.receiveShadow = true;
+  g.add(lawn);
   return g;
 }
 
@@ -106,84 +112,137 @@ export function rng(seed: number) {
   };
 }
 
-const cobbleGeo = new THREE.BoxGeometry(0.46, 0.14, 0.46);
+// Irregular, slightly domed stones (a squashed dodecahedron) read as hand-laid cobbles.
+const cobbleGeo = new THREE.DodecahedronGeometry(0.29, 0).scale(1, 0.4, 1);
+const curbGeo = new THREE.BoxGeometry(1, 1, 1);
+const MORTAR = 0x4a433c;
 function cobbleMesh(count: number) {
-  const im = new THREE.InstancedMesh(cobbleGeo, new THREE.MeshStandardMaterial({ roughness: 0.95, flatShading: true }), count);
+  const m = new THREE.MeshStandardMaterial({ roughness: 0.92, flatShading: true });
+  m.envMapIntensity = 0.3;
+  const im = new THREE.InstancedMesh(cobbleGeo, m, count);
   im.receiveShadow = true;
   return im;
 }
 
-/** A cobblestone road from a to b (x/z), with curbs. */
-export function road(a: THREE.Vector2, b: THREE.Vector2, width: number, seed: number): THREE.Group {
+/** Weathered stone colour: warm greys and tans, the odd mossy or darker stone. */
+function stoneColor(c: THREE.Color, r: () => number, base = PALETTE.stone) {
+  const roll = r();
+  c.setHex(base);
+  if (roll < 0.08) c.lerp(new THREE.Color(0x6f7a4e), 0.35); // moss
+  else if (roll < 0.2) c.multiplyScalar(0.8);
+  c.offsetHSL((r() - 0.5) * 0.03, (r() - 0.5) * 0.05, (r() - 0.5) * 0.14);
+}
+
+/** A row of curb blocks of varying length along a line (local frame: along +x). */
+function curbRow(len: number, z: number, r: () => number, into: { m: THREE.Matrix4; c: THREE.Color }[]) {
+  const d = new THREE.Object3D();
+  let x = -len / 2;
+  while (x < len / 2 - 0.2) {
+    const l = Math.min(0.6 + r() * 0.5, len / 2 - x);
+    d.position.set(x + l / 2, 0.34 + r() * 0.03, z + (r() - 0.5) * 0.04);
+    d.rotation.set(0, (r() - 0.5) * 0.05, 0);
+    d.scale.set(l - 0.05, 0.3 + r() * 0.05, 0.34);
+    d.updateMatrix();
+    const c = new THREE.Color();
+    stoneColor(c, r, PALETTE.stoneLight);
+    into.push({ m: d.matrix.clone(), c });
+    x += l;
+  }
+}
+
+/** A cobblestone road from a to b (x/z): stones set in dark mortar, with curbs of irregular blocks. */
+export function road(a: THREE.Vector2, b: THREE.Vector2, width: number, seed: number, withCurbs = true): THREE.Group {
   const g = new THREE.Group();
   const dir = b.clone().sub(a);
   const len = dir.length();
   const angle = Math.atan2(dir.y, dir.x);
   const r = rng(seed);
-  const cols = Math.max(2, Math.floor(width / 0.5));
-  const rows = Math.max(2, Math.floor(len / 0.5));
+  const frame = new THREE.Group();
+  frame.position.set((a.x + b.x) / 2, 0, (a.y + b.y) / 2);
+  frame.rotation.y = -angle;
+  g.add(frame);
+  frame.add(mesh(new THREE.BoxGeometry(len, 0.3, width + 0.7), mat(MORTAR), 0, 0.15, 0, false));
+  const spacing = 0.44;
+  const cols = Math.max(2, Math.floor(width / spacing));
+  const rows = Math.max(2, Math.floor(len / spacing));
   const im = cobbleMesh(cols * rows);
-  const dummy = new THREE.Object3D();
+  const d = new THREE.Object3D();
   const col = new THREE.Color();
   let i = 0;
   for (let ri = 0; ri < rows; ri++) {
     for (let ci = 0; ci < cols; ci++) {
-      const along = (ri + 0.5) * (len / rows) + (ci % 2 ? 0.12 : -0.12);
-      const across = (ci + 0.5) * (width / cols) - width / 2;
-      dummy.position.set(a.x + Math.cos(angle) * along - Math.sin(angle) * across, 0.33 + r() * 0.04, a.y + Math.sin(angle) * along + Math.cos(angle) * across);
-      dummy.rotation.set(0, -angle + (r() - 0.5) * 0.25, 0);
-      const s = 0.85 + r() * 0.25;
-      dummy.scale.set(s, 1, s);
-      dummy.updateMatrix();
-      im.setMatrixAt(i, dummy.matrix);
-      col.setHex(PALETTE.stone).offsetHSL(0, (r() - 0.5) * 0.04, (r() - 0.5) * 0.12);
-      im.setColorAt(i, col);
-      i++;
+      const along = -len / 2 + (ri + 0.5) * (len / rows) + (ci % 2 ? 0.11 : -0.11) + (r() - 0.5) * 0.07;
+      const across = (ci + 0.5) * (width / cols) - width / 2 + (r() - 0.5) * 0.06;
+      d.position.set(along, 0.31 + r() * 0.03, across);
+      d.rotation.set((r() - 0.5) * 0.06, r() * Math.PI, (r() - 0.5) * 0.06);
+      d.scale.set(0.92 + r() * 0.25, 0.9 + r() * 0.25, 0.88 + r() * 0.25);
+      d.updateMatrix();
+      im.setMatrixAt(i, d.matrix);
+      stoneColor(col, r);
+      im.setColorAt(i++, col);
     }
   }
-  g.add(im);
-  // base slab and curbs
-  const base = mesh(new THREE.BoxGeometry(len, 0.3, width + 0.5), mat(PALETTE.stoneDark), 0, 0.12, 0, false);
-  const curb = new THREE.BoxGeometry(len, 0.3, 0.28);
-  const c1 = mesh(curb, mat(PALETTE.stone), 0, 0.36, width / 2 + 0.1);
-  const c2 = mesh(curb, mat(PALETTE.stone), 0, 0.36, -width / 2 - 0.1);
-  const frame = new THREE.Group();
-  frame.add(base, c1, c2);
-  frame.position.set((a.x + b.x) / 2, 0, (a.y + b.y) / 2);
-  frame.rotation.y = -angle;
-  g.add(frame);
+  frame.add(im);
+  if (!withCurbs) return g;
+  const curbs: { m: THREE.Matrix4; c: THREE.Color }[] = [];
+  curbRow(len, width / 2 + 0.2, r, curbs);
+  curbRow(len, -width / 2 - 0.2, r, curbs);
+  const cm = new THREE.InstancedMesh(curbGeo, new THREE.MeshStandardMaterial({ roughness: 0.95, flatShading: true }), curbs.length);
+  curbs.forEach((cb, k) => {
+    cm.setMatrixAt(k, cb.m);
+    cm.setColorAt(k, cb.c);
+  });
+  cm.castShadow = true;
+  cm.receiveShadow = true;
+  frame.add(cm);
   return g;
 }
 
-/** Central plaza: rings of cobbles around a compass-star inlay. */
+/** Central plaza: rings of cobbles in mortar, a curb of radial blocks, and a compass-star inlay. */
 export function plaza(radius: number): THREE.Group {
   const g = new THREE.Group();
-  g.add(mesh(new THREE.CylinderGeometry(radius + 0.7, radius + 0.9, 0.5, 40), mat(PALETTE.stoneDark), 0, 0.2, 0));
-  g.add(mesh(new THREE.CylinderGeometry(radius + 0.35, radius + 0.35, 0.18, 40), mat(PALETTE.stone), 0, 0.52, 0));
+  g.add(mesh(new THREE.CylinderGeometry(radius + 0.75, radius + 0.95, 0.5, 48), mat(PALETTE.stoneDark), 0, 0.2, 0));
+  g.add(mesh(new THREE.CylinderGeometry(radius + 0.4, radius + 0.4, 0.16, 48), mat(MORTAR), 0, 0.52, 0, false));
   const r = rng(7);
   const rings: number[] = [];
-  for (let rr = radius; rr > 2.6; rr -= 0.52) rings.push(rr);
-  const total = rings.reduce((n, rr) => n + Math.floor((2 * Math.PI * rr) / 0.5), 0);
+  for (let rr = radius; rr > 2.7; rr -= 0.47) rings.push(rr);
+  const total = rings.reduce((n, rr) => n + Math.floor((2 * Math.PI * rr) / 0.46), 0);
   const im = cobbleMesh(total);
-  const dummy = new THREE.Object3D();
+  const d = new THREE.Object3D();
   const col = new THREE.Color();
   let i = 0;
   for (const rr of rings) {
-    const n = Math.floor((2 * Math.PI * rr) / 0.5);
+    const n = Math.floor((2 * Math.PI * rr) / 0.46);
+    const offset = r() * Math.PI;
     for (let k = 0; k < n; k++) {
-      const t = (k / n) * Math.PI * 2;
-      dummy.position.set(Math.cos(t) * rr, 0.62, Math.sin(t) * rr);
-      dummy.rotation.set(0, -t, 0);
-      dummy.scale.set(0.95, 1, 0.9);
-      dummy.updateMatrix();
-      im.setMatrixAt(i, dummy.matrix);
-      col.setHex(PALETTE.stoneLight).offsetHSL(0, 0, (r() - 0.5) * 0.12);
+      const t = offset + (k / n) * Math.PI * 2;
+      d.position.set(Math.cos(t) * rr, 0.6 + r() * 0.025, Math.sin(t) * rr);
+      d.rotation.set(0, -t + (r() - 0.5) * 0.4, 0);
+      d.scale.set(0.85 + r() * 0.25, 0.9 + r() * 0.2, 0.85 + r() * 0.2);
+      d.updateMatrix();
+      im.setMatrixAt(i, d.matrix);
+      stoneColor(col, r, PALETTE.stone);
       im.setColorAt(i++, col);
     }
   }
   g.add(im);
+  // outer curb of radial blocks
+  const n = Math.floor((2 * Math.PI * (radius + 0.45)) / 0.75);
+  const curb = new THREE.InstancedMesh(curbGeo, new THREE.MeshStandardMaterial({ roughness: 0.95, flatShading: true }), n);
+  for (let k = 0; k < n; k++) {
+    const t = (k / n) * Math.PI * 2;
+    d.position.set(Math.cos(t) * (radius + 0.45), 0.62, Math.sin(t) * (radius + 0.45));
+    d.rotation.set(0, -t + Math.PI / 2, 0);
+    d.scale.set(0.7, 0.24 + r() * 0.05, 0.4);
+    d.updateMatrix();
+    curb.setMatrixAt(k, d.matrix);
+    stoneColor(col, r, PALETTE.stoneLight);
+    curb.setColorAt(k, col);
+  }
+  curb.receiveShadow = true;
+  g.add(curb);
   // inlay: blue disc + gold ring + 8-point star
-  g.add(mesh(new THREE.CylinderGeometry(2.55, 2.55, 0.1, 40), mat(0x4b5a9c), 0, 0.64, 0, false));
+  g.add(mesh(new THREE.CylinderGeometry(2.7, 2.7, 0.12, 48), mat(0x4b5a9c), 0, 0.64, 0, false));
   g.add(mesh(new THREE.TorusGeometry(2.0, 0.07, 6, 48).rotateX(Math.PI / 2), mat(PALETTE.gold, { metal: 0.4, rough: 0.5 }), 0, 0.71, 0, false));
   const star = new THREE.Shape();
   for (let k = 0; k < 16; k++) {

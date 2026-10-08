@@ -6,7 +6,8 @@ import * as THREE from '../../vendor/three.module.js';
 import { attachBuildingModel, BUILDINGS, buildBuilding, drawSign, type BuildingHandle } from './buildings.ts';
 import { applyCharacterStatus, attachCharacterModel, buildCharacter } from './characters.ts';
 import { instantiate, loadManifest, modelMaterials, type ModelManifest } from './models.ts';
-import { lantern, mat, mesh, PALETTE, plaza, road } from './kit.ts';
+import { lantern, PALETTE, plaza, road } from './kit.ts';
+import { grassGround, landscape, type Keepout } from './nature.ts';
 import type { BuildingVisual, ResidentLike, ResidentVisual } from './state.ts';
 
 
@@ -49,20 +50,20 @@ export class VillageScene {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.15;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    this.scene.background = new THREE.Color(PALETTE.ground);
-    this.scene.fog = new THREE.Fog(PALETTE.ground, 70, 140);
+    this.scene.background = new THREE.Color(0x2c3d2a);
+    this.scene.fog = new THREE.Fog(0x2c3d2a, 90, 190);
     // Soft image-based light so the models' metal and PBR materials (e.g. Codex's brass) read correctly.
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     this.scene.environmentIntensity = 0.45;
     pmrem.dispose();
     this.camera = new THREE.PerspectiveCamera(30, 1, 0.5, 400);
-    this.camera.position.set(0, 66, 74);
+    this.camera.position.set(0, 70, 82);
     this.controls = new OrbitControls(this.camera, canvas);
-    this.controls.target.set(0, 0, -4);
+    this.controls.target.set(0, 0, 1);
     this.controls.enableDamping = true;
     this.controls.minDistance = 18;
-    this.controls.maxDistance = 110;
+    this.controls.maxDistance = 130;
     this.controls.maxPolarAngle = Math.PI * 0.43;
     this.hemi = new THREE.HemisphereLight(0xffe7c8, 0x3a2f28, 1.0);
     this.scene.add(this.hemi);
@@ -96,15 +97,17 @@ export class VillageScene {
   }
 
   private buildWorld() {
-    const ground = mesh(new THREE.CircleGeometry(90, 48).rotateX(-Math.PI / 2), mat(0x312c2e), 0, -0.02, 0, false);
-    this.scene.add(ground);
+    this.scene.add(grassGround(170));
     this.scene.add(plaza(5.6));
+    const keepout: Keepout = { circles: [{ x: 0, z: 0, r: 8 }], segments: [] };
     BUILDINGS.forEach((def, i) => {
       // road from the plaza edge to the building's front steps
       const front = new THREE.Vector3(0, 0, def.d / 2 + 2.4).applyAxisAngle(new THREE.Vector3(0, 1, 0), def.rotY).add(new THREE.Vector3(def.x, 0, def.z));
       const dir = new THREE.Vector2(front.x, front.z).normalize();
       const start = dir.clone().multiplyScalar(5.9);
       this.scene.add(road(start, new THREE.Vector2(front.x, front.z), 2.6, 100 + i));
+      keepout.segments.push({ a: start.clone(), b: new THREE.Vector2(front.x, front.z), r: 2.4 });
+      keepout.circles.push({ x: def.x, z: def.z, r: Math.hypot(def.w, def.d) / 2 + 1.6 });
       const mid = start.clone().lerp(new THREE.Vector2(front.x, front.z), 0.5);
       const side = new THREE.Vector2(-dir.y, dir.x).multiplyScalar(2.0);
       for (const s of [1, -1]) {
@@ -116,6 +119,7 @@ export class VillageScene {
       this.buildings.set(def.id, b);
       this.scene.add(b.group);
     });
+    this.scene.add(landscape(keepout));
     this.loadBuildingModels();
   }
 
@@ -153,8 +157,10 @@ export class VillageScene {
 
   setNight(night: boolean) {
     this.night = night;
-    this.scene.background = new THREE.Color(night ? PALETTE.ground : 0x8fa6c4);
-    (this.scene.fog as THREE.Fog).color.set(night ? PALETTE.ground : 0x8fa6c4);
+    // Green, grassy horizon: deep evening green at night, soft meadow haze by day.
+    const horizon = night ? 0x2c3d2a : 0x9fbf8a;
+    this.scene.background = new THREE.Color(horizon);
+    (this.scene.fog as THREE.Fog).color.set(horizon);
     this.hemi.intensity = night ? 1.1 : 1.6;
     this.hemi.color.set(night ? 0xd9d0ff : 0xfff3e0);
     this.ambient.intensity = night ? 0.45 : 0.7;
@@ -172,7 +178,9 @@ export class VillageScene {
     this.buildingVisuals = new Map(visuals.buildings.map((b) => [b.id, b]));
     this.applyBuildingVisuals();
     for (const [id, b] of this.buildings) {
-      const rs = residents.filter((r) => r.building === id);
+      // The sign speaks for the residents who live here in the village (figure shown), or all if none are shown.
+      const here = residents.filter((r) => r.building === id);
+      const rs = here.some((r) => r.appearance.figure !== false) ? here.filter((r) => r.appearance.figure !== false) : here;
       const connected = rs.filter((r) => r.status === 'connected').length;
       const label = !rs.length ? 'No resident registered' : rs.every((r) => r.status === 'untested') ? 'Not checked yet' : connected ? `${connected}/${rs.length} connected` : rs.length > 1 ? `${rs.length} residents · disconnected` : 'Disconnected';
       const color = !rs.length ? '#7d7466' : connected ? '#6fd08c' : rs.every((r) => r.status === 'untested') ? '#8aa0c8' : '#c97a6a';
@@ -184,14 +192,16 @@ export class VillageScene {
       }
     }
     const poseOf = new Map(visuals.residents.map((v) => [v.id, v]));
-    for (const r of residents) {
+    // Residents with appearance.figure === false stay registered but have no figure in the village.
+    const shown = residents.filter((r) => r.appearance.figure !== false);
+    for (const r of shown) {
       let f = this.figures.get(r.id);
       const b = this.buildings.get(r.building);
       if (!b) continue;
       if (!f) {
         const fig = buildCharacter(r.id, r.appearance.lineage);
         fig.userData.residentId = r.id;
-        const siblings = residents.filter((x) => x.building === r.building);
+        const siblings = shown.filter((x) => x.building === r.building);
         const idx = siblings.findIndex((x) => x.id === r.id);
         const spread = (idx - (siblings.length - 1) / 2) * 1.5;
         const local = new THREE.Vector3(spread * 1.2, 0.95, b.def.d / 2 + 0.35);
@@ -266,7 +276,7 @@ export class VillageScene {
 
   /** Back to the whole-village view. */
   overview() {
-    this.camTween = { from: this.camera.position.clone(), to: new THREE.Vector3(0, 66, 74), tFrom: this.controls.target.clone(), tTo: new THREE.Vector3(0, 0, -4), start: performance.now() };
+    this.camTween = { from: this.camera.position.clone(), to: new THREE.Vector3(0, 70, 82), tFrom: this.controls.target.clone(), tTo: new THREE.Vector3(0, 0, 1), start: performance.now() };
   }
 
   private resize() {

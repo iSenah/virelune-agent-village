@@ -13,7 +13,7 @@ export const BUILDINGS: BuildingDef[] = [
   B('unreal-workshop', 'Aura', 'Unreal Workshop', '3D · Environments', 18, -9, 9, 7.5),
   B('engineering-forge', 'Codex', 'Engineering Forge', 'Developer · Automation', -17, 12, 9, 7.5),
   B('blender-house', 'Blender House', '3D & Assets', 'Models · Textures', 17, 12, 9, 7.5),
-  B('post-office', 'Scribe', 'Post Office', 'Notes · Summaries', 11, -27, 7, 6),
+  B('post-office', 'Scribe', 'Post Office', 'Notes · Summaries', 0, 21, 7, 6),
 ];
 
 export type BuildingHandle = {

@@ -1,6 +1,6 @@
 {
   "id": "codex-unreal",
-  "displayName": "Codex · Unreal",
+  "displayName": "Codex \u00b7 Unreal",
   "role": "Unreal Engine scripting and tooling with Codex",
   "capabilities": [
     "unreal",
@@ -12,7 +12,8 @@
   "building": "unreal-workshop",
   "appearance": {
     "lineage": "codex",
-    "color": "#e8890c"
+    "color": "#e8890c",
+    "figure": false
   },
   "requires": [
     "codex",

@@ -74,3 +74,16 @@ test('grantFor: default deny, exec always asks, unclassified never exposed', () 
   const none = parseResident(base).value!;
   assert.equal(grantFor(none, server, 'r'), 'deny');
 });
+
+test('village figures: Unreal combos stay registered without figures; Blender House keeps both', () => {
+  const reg = loadRegistries(path.join(PROJECT_ROOT, 'config'));
+  for (const id of ['codex-unreal', 'claude-unreal']) {
+    assert.ok(reg.residents.has(id), `${id} must stay registered`);
+    assert.equal(reg.residents.get(id)!.appearance.figure, false, `${id} has no village figure`);
+  }
+  const atWorkshop = [...reg.residents.values()].filter((r) => r.building === 'unreal-workshop' && r.appearance.figure);
+  assert.deepEqual(atWorkshop.map((r) => r.id), ['aura']);
+  const atBlender = [...reg.residents.values()].filter((r) => r.building === 'blender-house' && r.appearance.figure).map((r) => r.id).sort();
+  assert.deepEqual(atBlender, ['claude-blender', 'codex-blender']);
+  assert.equal(parseResident({ ...base, appearance: { lineage: 'codex', color: '#e8890c', figure: 'no' } }).errors.some((e) => e.includes('figure')), true);
+});

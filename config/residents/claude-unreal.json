@@ -1,6 +1,6 @@
 {
   "id": "claude-unreal",
-  "displayName": "Claude · Unreal",
+  "displayName": "Claude \u00b7 Unreal",
   "role": "Unreal Engine design and documentation with Claude",
   "capabilities": [
     "unreal",
@@ -12,7 +12,8 @@
   "building": "unreal-workshop",
   "appearance": {
     "lineage": "claude",
-    "color": "#c8643c"
+    "color": "#c8643c",
+    "figure": false
   },
   "requires": [
     "claude-agent-sdk",
