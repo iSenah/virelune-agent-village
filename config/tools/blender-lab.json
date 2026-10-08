@@ -1,1 +1,14 @@
-{"$comment":"Official Blender Lab MCP server. Tools stay unclassified (hidden) until you classify them after the first verified tool listing.","id":"blender-lab","displayName":"Blender Lab MCP","kind":"mcp","transport":"stdio","commandEnv":"BLENDER_MCP_COMMAND","requires":["blender"],"exclusive":true,"leaseSeconds":900,"risk":{}}
+{
+  "$comment": "Official Blender Lab MCP server. Tools stay unclassified (hidden) until you classify them after the first verified tool listing.",
+  "id": "blender-lab",
+  "displayName": "Blender Lab MCP",
+  "kind": "mcp",
+  "transport": "stdio",
+  "commandEnv": "BLENDER_MCP_COMMAND",
+  "requires": [
+    "blender"
+  ],
+  "exclusive": true,
+  "leaseSeconds": 900,
+  "risk": {}
+}

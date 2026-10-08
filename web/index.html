@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Virelune Agent Village</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <canvas id="village" aria-label="Virelune Agent Village, a 3D view of the residents and their buildings"></canvas>
+
+    <header class="topbar">
+      <div class="brand">
+        <span class="crest" aria-hidden="true">✦</span>
+        <div>
+          <h1>Virelune Agent Village</h1>
+          <p id="machine" class="muted">Connecting to Village Hall…</p>
+        </div>
+      </div>
+      <div class="controls">
+        <div class="autonomy" role="group" aria-label="Echo autonomy">
+          <span class="label">Echo autonomy</span>
+          <div id="autonomy" class="segmented"></div>
+        </div>
+        <button id="doctor" class="btn primary" type="button">Check integrations</button>
+        <button id="panels" class="btn ghost" type="button" title="Show or hide the side panels (P)">Panels</button>
+        <button id="daynight" class="btn ghost" type="button" title="Ambient lighting only">Day</button>
+        <span id="live" class="live off" title="Live event stream">offline</span>
+      </div>
+    </header>
+
+    <aside class="panel left" aria-label="Residents">
+      <h2>Residents</h2>
+      <p class="hint">Status comes only from real integration checks on this machine.</p>
+      <ul id="residents" class="residents"></ul>
+    </aside>
+
+    <aside class="panel right" aria-label="Village activity">
+      <nav class="tabs" role="tablist">
+        <button role="tab" data-tab="activity" class="active">Activity</button>
+        <button role="tab" data-tab="tasks">Tasks</button>
+        <button role="tab" data-tab="approvals">Approvals <span id="approvalCount" class="count"></span></button>
+        <button role="tab" data-tab="integrations">Integrations</button>
+      </nav>
+      <section data-pane="activity" class="pane active">
+        <ul id="feed" class="feed"></ul>
+      </section>
+      <section data-pane="tasks" class="pane">
+        <form id="taskForm" class="taskform">
+          <input name="title" placeholder="New task title" maxlength="200" required />
+          <textarea name="description" placeholder="Details (optional)" rows="2"></textarea>
+          <div class="row">
+            <select name="assignee"><option value="">No assignee (Echo plans it)</option></select>
+            <button class="btn primary" type="submit">Add task</button>
+          </div>
+          <p class="hint">Runtime adapters are not enabled in this milestone, so tasks wait with a real reason instead of starting.</p>
+        </form>
+        <ul id="tasks" class="tasks"></ul>
+      </section>
+      <section data-pane="approvals" class="pane">
+        <ul id="approvals" class="approvals"></ul>
+      </section>
+      <section data-pane="integrations" class="pane">
+        <div id="integrations"></div>
+      </section>
+    </aside>
+
+    <div id="detail" class="detail" hidden></div>
+    <footer id="truth" class="truth"></footer>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

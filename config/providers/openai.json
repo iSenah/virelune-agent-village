@@ -1,1 +1,7 @@
-{"id":"openai","displayName":"OpenAI API","integration":"openai-api","billing":"paid-api","notes":"No free tier. Set a monthly budget in the OpenAI dashboard."}
+{
+  "id": "openai",
+  "displayName": "OpenAI API",
+  "integration": "openai-api",
+  "billing": "paid-api",
+  "notes": "No free tier. Set a monthly budget in the OpenAI dashboard."
+}

@@ -1,1 +1,7 @@
-{"id":"anthropic","displayName":"Anthropic API","integration":"anthropic-api","billing":"paid-api","notes":"Claude Agent SDK apps need an API key; a Claude subscription cannot be used."}
+{
+  "id": "anthropic",
+  "displayName": "Anthropic API",
+  "integration": "anthropic-api",
+  "billing": "paid-api",
+  "notes": "Claude Agent SDK apps need an API key; a Claude subscription cannot be used."
+}

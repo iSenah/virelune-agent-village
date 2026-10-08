@@ -1,1 +1,14 @@
-{"$comment":"Unreal Engine 5.8 experimental MCP. Unclassified until verified.","id":"unreal-58","displayName":"Unreal Engine 5.8 MCP","kind":"mcp","transport":"stdio","commandEnv":"UNREAL_MCP_COMMAND","requires":["unreal"],"exclusive":true,"leaseSeconds":1800,"risk":{}}
+{
+  "$comment": "Unreal Engine 5.8 experimental MCP. Unclassified until verified.",
+  "id": "unreal-58",
+  "displayName": "Unreal Engine 5.8 MCP",
+  "kind": "mcp",
+  "transport": "stdio",
+  "commandEnv": "UNREAL_MCP_COMMAND",
+  "requires": [
+    "unreal"
+  ],
+  "exclusive": true,
+  "leaseSeconds": 1800,
+  "risk": {}
+}

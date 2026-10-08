@@ -72,7 +72,7 @@ export async function checkCodex(ctx: DoctorContext): Promise<IntegrationResult>
       const sb = await rpc.request('windowsSandbox/readiness', {}, 15_000).catch((e: Error) => ({ error: e.message }));
       checks.push({ name: 'Windows sandbox readiness', result: sb?.error ? 'fail' : 'pass', detail: JSON.stringify(sb).slice(0, 200) });
     } else {
-      checks.push({ name: 'Sandbox check', result: 'skip', detail: 'Sandbox enforcement is verified separately (`npm run probe:sandbox`).' });
+      checks.push({ name: 'Sandbox check', result: 'skip', detail: 'Run `npm run probe:sandbox` to verify sandbox enforcement on this machine.' });
     }
   } catch (e) {
     checks.push({ name: 'app-server handshake', result: 'fail', detail: (e as Error).message });

@@ -1,1 +1,6 @@
-{"id":"claude-agent-sdk","displayName":"Claude Agent SDK (TypeScript, in-process)","kind":"claude-agent-sdk","integration":"claude-agent-sdk"}
+{
+  "id": "claude-agent-sdk",
+  "displayName": "Claude Agent SDK (TypeScript, in-process)",
+  "kind": "claude-agent-sdk",
+  "integration": "claude-agent-sdk"
+}

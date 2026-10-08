@@ -104,6 +104,9 @@ export class TaskEngine {
   }
 
   cancel(id: string, actor = 'human'): Task {
+    const current = this.get(id);
+    if (!current) throw new NotFoundError(`task "${id}" not found`);
+    if (TERMINAL.includes(current.status)) throw new ConflictError(`task is already ${current.status}`);
     return tx(this.db, () => {
       const t = this.transition(id, 'cancelled', actor, 'Cancelled');
       this.evaluateAll('system');

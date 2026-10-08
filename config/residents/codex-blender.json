@@ -1,1 +1,44 @@
-{"id":"codex-blender","displayName":"Codex · Blender","role":"Blender scene scripting and asset automation with Codex","capabilities":["blender","3d-assets","programming"],"runtime":"codex-app-server","provider":"chatgpt-plan","model":null,"building":"blender-house","appearance":{"lineage":"codex","color":"#e8890c"},"requires":["codex","blender"],"focus":false,"tools":[{"server":"blender-lab","allow":["risk:read"],"ask":["risk:write","risk:exec"]}],"verification":{"required":true},"permissions":"restricted","budget":{"perTaskUsd":2,"dailyUsd":10,"maxTurns":40}}
+{
+  "id": "codex-blender",
+  "displayName": "Codex · Blender",
+  "role": "Blender scene scripting and asset automation with Codex",
+  "capabilities": [
+    "blender",
+    "3d-assets",
+    "programming"
+  ],
+  "runtime": "codex-app-server",
+  "provider": "chatgpt-plan",
+  "model": null,
+  "building": "blender-house",
+  "appearance": {
+    "lineage": "codex",
+    "color": "#e8890c"
+  },
+  "requires": [
+    "codex",
+    "blender"
+  ],
+  "focus": false,
+  "tools": [
+    {
+      "server": "blender-lab",
+      "allow": [
+        "risk:read"
+      ],
+      "ask": [
+        "risk:write",
+        "risk:exec"
+      ]
+    }
+  ],
+  "verification": {
+    "required": true
+  },
+  "permissions": "restricted",
+  "budget": {
+    "perTaskUsd": 2,
+    "dailyUsd": 10,
+    "maxTurns": 40
+  }
+}

@@ -1,1 +1,6 @@
-{"id":"codex-app-server","displayName":"Codex app-server (JSON-RPC over stdio)","kind":"codex-app-server","integration":"codex"}
+{
+  "id": "codex-app-server",
+  "displayName": "Codex app-server (JSON-RPC over stdio)",
+  "kind": "codex-app-server",
+  "integration": "codex"
+}

@@ -1,1 +1,43 @@
-{"id":"codex-unreal","displayName":"Codex · Unreal","role":"Unreal Engine scripting and tooling with Codex","capabilities":["unreal","programming"],"runtime":"codex-app-server","provider":"chatgpt-plan","model":null,"building":"unreal-workshop","appearance":{"lineage":"codex","color":"#e8890c"},"requires":["codex","unreal"],"focus":false,"tools":[{"server":"unreal-58","allow":["risk:read"],"ask":["risk:write","risk:exec"]}],"verification":{"required":true},"permissions":"restricted","budget":{"perTaskUsd":2,"dailyUsd":10,"maxTurns":40}}
+{
+  "id": "codex-unreal",
+  "displayName": "Codex · Unreal",
+  "role": "Unreal Engine scripting and tooling with Codex",
+  "capabilities": [
+    "unreal",
+    "programming"
+  ],
+  "runtime": "codex-app-server",
+  "provider": "chatgpt-plan",
+  "model": null,
+  "building": "unreal-workshop",
+  "appearance": {
+    "lineage": "codex",
+    "color": "#e8890c"
+  },
+  "requires": [
+    "codex",
+    "unreal"
+  ],
+  "focus": false,
+  "tools": [
+    {
+      "server": "unreal-58",
+      "allow": [
+        "risk:read"
+      ],
+      "ask": [
+        "risk:write",
+        "risk:exec"
+      ]
+    }
+  ],
+  "verification": {
+    "required": true
+  },
+  "permissions": "restricted",
+  "budget": {
+    "perTaskUsd": 2,
+    "dailyUsd": 10,
+    "maxTurns": 40
+  }
+}

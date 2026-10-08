@@ -1,1 +1,33 @@
-{"id":"codex","displayName":"Codex","role":"Developer: general programming and automation","capabilities":["programming","testing","automation"],"runtime":"codex-app-server","provider":"chatgpt-plan","model":null,"building":"engineering-forge","appearance":{"lineage":"codex","color":"#e8890c"},"requires":["codex","git"],"focus":true,"tools":[],"verification":{"required":true},"permissions":"worktree-write","budget":{"perTaskUsd":2,"dailyUsd":10,"maxTurns":40}}
+{
+  "id": "codex",
+  "displayName": "Codex",
+  "role": "Developer: general programming and automation",
+  "capabilities": [
+    "programming",
+    "testing",
+    "automation"
+  ],
+  "runtime": "codex-app-server",
+  "provider": "chatgpt-plan",
+  "model": null,
+  "building": "engineering-forge",
+  "appearance": {
+    "lineage": "codex",
+    "color": "#e8890c"
+  },
+  "requires": [
+    "codex",
+    "git"
+  ],
+  "focus": true,
+  "tools": [],
+  "verification": {
+    "required": true
+  },
+  "permissions": "worktree-write",
+  "budget": {
+    "perTaskUsd": 2,
+    "dailyUsd": 10,
+    "maxTurns": 40
+  }
+}
