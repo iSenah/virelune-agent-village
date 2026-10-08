@@ -1,0 +1,23 @@
+# Machine-specific settings and secrets: never commit
+.env
+.env.*
+!.env.example
+*.local.json
+machine/
+
+# Runtime data (SQLite database, logs, per-resident runtime homes)
+data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Exports and dependencies
+exports/
+node_modules/
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

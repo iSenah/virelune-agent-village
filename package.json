@@ -1,0 +1,17 @@
+{
+  "name": "virelune-agent-village",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Virelune Agent Village: a browser-based AI agent village driven by real agent activity.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning server/main.ts",
+    "doctor": "node --disable-warning=ExperimentalWarning server/cli.ts doctor",
+    "export": "node --disable-warning=ExperimentalWarning server/cli.ts export",
+    "test": "node --disable-warning=ExperimentalWarning --test --test-concurrency=1 tests/",
+    "probe:codex": "node --disable-warning=ExperimentalWarning integrations/probes/codex-app-server.ts"
+  }
+}

@@ -1,0 +1,1 @@
+{"id":"design-implement-review","displayName":"Design, implement, review","steps":[{"id":"design","needs":["design"],"output":"DESIGN.md"},{"id":"implement","needs":["programming"],"after":["design"],"output":"diff"},{"id":"review","needs":["review"],"after":["implement"],"output":"review.md"}]}

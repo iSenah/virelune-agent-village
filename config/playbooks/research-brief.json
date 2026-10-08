@@ -1,0 +1,1 @@
+{"id":"research-brief","displayName":"Research brief","steps":[{"id":"scope","needs":["planning"],"output":"brief.md"},{"id":"gather","needs":["research"],"after":["scope"],"output":"sources.md"},{"id":"synthesize","needs":["writing"],"after":["gather"],"output":"report.md"},{"id":"review","needs":["review"],"after":["synthesize"]}]}

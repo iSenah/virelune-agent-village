@@ -1,0 +1,1 @@
+{"id":"ollama","displayName":"Ollama (local models)","integration":"ollama","billing":"free-local","notes":"Free; runs on this machine if Ollama is installed."}

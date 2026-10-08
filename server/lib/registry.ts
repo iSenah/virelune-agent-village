@@ -1,0 +1,314 @@
+// Agent Registry and Tool Registry: residents, runtimes, providers, tool servers and playbooks are data.
+// Manifests are JSON files under config/. They are validated on load; invalid manifests are reported, not loaded.
+import fs from 'node:fs';
+import path from 'node:path';
+
+export type RiskClass = 'read' | 'write' | 'exec';
+export const RISK_CLASSES: RiskClass[] = ['read', 'write', 'exec'];
+
+export type ToolGrant = { server: string; allow: string[]; ask: string[] };
+
+export type Resident = {
+  id: string;
+  displayName: string;
+  role: string;
+  capabilities: string[];
+  runtime: string;
+  provider: string;
+  model: string | null;
+  building: string;
+  appearance: { lineage: string; color: string };
+  tools: ToolGrant[];
+  requires: string[];
+  focus: boolean;
+  verification: { required: boolean };
+  permissions: string;
+  budget: { perTaskUsd: number; dailyUsd: number; maxTurns: number };
+};
+
+export type Runtime = { id: string; displayName: string; kind: string; integration: string };
+export type Provider = { id: string; displayName: string; integration: string; billing: string; notes: string };
+export type ToolServer = {
+  id: string;
+  displayName: string;
+  kind: 'mcp';
+  transport: 'stdio';
+  command: string | null;
+  commandEnv: string | null;
+  args: string[];
+  requires: string[];
+  exclusive: boolean;
+  leaseSeconds: number;
+  risk: Record<string, RiskClass>;
+};
+export type Playbook = { id: string; displayName: string; steps: { id: string; needs: string[]; after: string[]; output: string | null }[] };
+
+export type Registries = {
+  residents: Map<string, Resident>;
+  runtimes: Map<string, Runtime>;
+  providers: Map<string, Provider>;
+  tools: Map<string, ToolServer>;
+  playbooks: Map<string, Playbook>;
+  errors: { file: string; message: string }[];
+};
+
+const ID = /^[a-z][a-z0-9-]{1,40}$/;
+
+class V {
+  errors: string[] = [];
+  private obj: any;
+  constructor(obj: any) {
+    this.obj = obj;
+    if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) this.errors.push('manifest must be a JSON object');
+  }
+  str(key: string, opts: { optional?: boolean; pattern?: RegExp } = {}): string | null {
+    const v = this.obj?.[key];
+    if (v === undefined || v === null) {
+      if (!opts.optional) this.errors.push(`${key} is required`);
+      return null;
+    }
+    if (typeof v !== 'string' || v.length === 0) {
+      this.errors.push(`${key} must be a non-empty string`);
+      return null;
+    }
+    if (opts.pattern && !opts.pattern.test(v)) this.errors.push(`${key} has an invalid format`);
+    return v;
+  }
+  strArr(key: string, optional = true): string[] {
+    const v = this.obj?.[key];
+    if (v === undefined) {
+      if (!optional) this.errors.push(`${key} is required`);
+      return [];
+    }
+    if (!Array.isArray(v) || v.some((x) => typeof x !== 'string')) {
+      this.errors.push(`${key} must be an array of strings`);
+      return [];
+    }
+    return v;
+  }
+  bool(key: string, dflt: boolean): boolean {
+    const v = this.obj?.[key];
+    if (v === undefined) return dflt;
+    if (typeof v !== 'boolean') this.errors.push(`${key} must be true or false`);
+    return Boolean(v);
+  }
+  num(key: string, dflt: number, min = 0): number {
+    const v = this.obj?.[key];
+    if (v === undefined) return dflt;
+    if (typeof v !== 'number' || !Number.isFinite(v) || v < min) this.errors.push(`${key} must be a number >= ${min}`);
+    return Number(v);
+  }
+  sub(key: string): V {
+    const v = new V(this.obj?.[key] ?? {});
+    return v;
+  }
+  raw(key: string): any {
+    return this.obj?.[key];
+  }
+  noExtra(allowed: string[]) {
+    if (!this.obj || typeof this.obj !== 'object') return;
+    for (const k of Object.keys(this.obj)) if (!allowed.includes(k)) this.errors.push(`unknown field "${k}"`);
+  }
+}
+
+function parseGrant(g: any, errors: string[]): ToolGrant | null {
+  if (!g || typeof g !== 'object') {
+    errors.push('each tools[] entry must be an object');
+    return null;
+  }
+  const allow = Array.isArray(g.allow) ? g.allow : [];
+  const ask = Array.isArray(g.ask) ? g.ask : [];
+  for (const sel of [...allow, ...ask]) {
+    if (typeof sel !== 'string') {
+      errors.push('tool grant selectors must be strings');
+      continue;
+    }
+    if (sel.startsWith('risk:')) {
+      const cls = sel.slice(5);
+      if (!RISK_CLASSES.includes(cls as RiskClass)) errors.push(`grant selector "${sel}" is not a known risk class`);
+    } else if (sel === '*' || sel.includes('*')) {
+      errors.push(`wildcard grant "${sel}" is not allowed; grant risk classes or named tools`);
+    }
+  }
+  if (allow.includes('risk:exec')) errors.push('risk:exec may only be granted under "ask", never "allow"');
+  if (typeof g.server !== 'string') {
+    errors.push('tools[].server is required');
+    return null;
+  }
+  return { server: g.server, allow, ask };
+}
+
+export function parseResident(obj: any): { value: Resident | null; errors: string[] } {
+  const v = new V(obj);
+  v.noExtra(['id', 'displayName', 'role', 'capabilities', 'runtime', 'provider', 'model', 'building', 'appearance', 'tools', 'requires', 'focus', 'verification', 'permissions', 'budget', '$comment']);
+  const id = v.str('id', { pattern: ID });
+  const displayName = v.str('displayName');
+  const role = v.str('role');
+  const capabilities = v.strArr('capabilities', false);
+  const runtime = v.str('runtime', { pattern: ID });
+  const provider = v.str('provider', { pattern: ID });
+  const model = v.str('model', { optional: true });
+  const building = v.str('building', { pattern: ID });
+  const ap = v.sub('appearance');
+  const lineage = ap.str('lineage') ?? 'neutral';
+  const color = ap.str('color', { pattern: /^#[0-9a-fA-F]{6}$/ }) ?? '#888888';
+  v.errors.push(...ap.errors.map((e) => `appearance.${e}`));
+  const toolsRaw = v.raw('tools') ?? [];
+  const tools: ToolGrant[] = [];
+  if (!Array.isArray(toolsRaw)) v.errors.push('tools must be an array');
+  else for (const g of toolsRaw) {
+    const parsed = parseGrant(g, v.errors);
+    if (parsed) tools.push(parsed);
+  }
+  const requires = v.strArr('requires', false);
+  const focus = v.bool('focus', false);
+  const ver = v.sub('verification');
+  const verification = { required: ver.bool('required', true) };
+  const permissions = v.str('permissions') ?? 'restricted';
+  const b = v.sub('budget');
+  const budget = { perTaskUsd: b.num('perTaskUsd', 1), dailyUsd: b.num('dailyUsd', 5), maxTurns: b.num('maxTurns', 30, 1) };
+  v.errors.push(...b.errors.map((e) => `budget.${e}`));
+  if (v.errors.length) return { value: null, errors: v.errors };
+  return {
+    value: { id: id!, displayName: displayName!, role: role!, capabilities, runtime: runtime!, provider: provider!, model, building: building!, appearance: { lineage, color }, tools, requires, focus, verification, permissions, budget },
+    errors: [],
+  };
+}
+
+export function parseRuntime(obj: any): { value: Runtime | null; errors: string[] } {
+  const v = new V(obj);
+  v.noExtra(['id', 'displayName', 'kind', 'integration', '$comment']);
+  const r = { id: v.str('id', { pattern: ID })!, displayName: v.str('displayName')!, kind: v.str('kind')!, integration: v.str('integration', { pattern: ID })! };
+  return v.errors.length ? { value: null, errors: v.errors } : { value: r, errors: [] };
+}
+
+export function parseProvider(obj: any): { value: Provider | null; errors: string[] } {
+  const v = new V(obj);
+  v.noExtra(['id', 'displayName', 'integration', 'billing', 'notes', '$comment']);
+  const billing = v.str('billing');
+  if (billing && !['paid-api', 'subscription', 'free-local', 'limited-free'].includes(billing)) v.errors.push('billing must be paid-api, subscription, free-local or limited-free');
+  const r = { id: v.str('id', { pattern: ID })!, displayName: v.str('displayName')!, integration: v.str('integration', { pattern: ID })!, billing: billing!, notes: v.str('notes', { optional: true }) ?? '' };
+  return v.errors.length ? { value: null, errors: v.errors } : { value: r, errors: [] };
+}
+
+export function parseToolServer(obj: any): { value: ToolServer | null; errors: string[] } {
+  const v = new V(obj);
+  v.noExtra(['id', 'displayName', 'kind', 'transport', 'command', 'commandEnv', 'args', 'requires', 'exclusive', 'leaseSeconds', 'risk', '$comment']);
+  const kind = v.str('kind');
+  if (kind && kind !== 'mcp') v.errors.push('kind must be "mcp"');
+  const transport = v.str('transport');
+  if (transport && transport !== 'stdio') v.errors.push('transport must be "stdio" (the gateway is the only network-facing MCP endpoint)');
+  const riskRaw = v.raw('risk') ?? {};
+  const risk: Record<string, RiskClass> = {};
+  if (typeof riskRaw !== 'object' || Array.isArray(riskRaw)) v.errors.push('risk must be an object of toolName: read|write|exec');
+  else for (const [tool, cls] of Object.entries(riskRaw)) {
+    if (!RISK_CLASSES.includes(cls as RiskClass)) v.errors.push(`risk.${tool} must be read, write or exec`);
+    else risk[tool] = cls as RiskClass;
+  }
+  const r: ToolServer = {
+    id: v.str('id', { pattern: ID })!,
+    displayName: v.str('displayName')!,
+    kind: 'mcp',
+    transport: 'stdio',
+    command: v.str('command', { optional: true }),
+    commandEnv: v.str('commandEnv', { optional: true, pattern: /^[A-Z][A-Z0-9_]*$/ }),
+    args: v.strArr('args'),
+    requires: v.strArr('requires'),
+    exclusive: v.bool('exclusive', true),
+    leaseSeconds: v.num('leaseSeconds', 900, 10),
+    risk,
+  };
+  if (!r.command && !r.commandEnv) v.errors.push('either command or commandEnv is required');
+  return v.errors.length ? { value: null, errors: v.errors } : { value: r, errors: [] };
+}
+
+export function parsePlaybook(obj: any): { value: Playbook | null; errors: string[] } {
+  const v = new V(obj);
+  v.noExtra(['id', 'displayName', 'steps', '$comment']);
+  const id = v.str('id', { pattern: ID });
+  const displayName = v.str('displayName');
+  const stepsRaw = v.raw('steps');
+  const steps: Playbook['steps'] = [];
+  if (!Array.isArray(stepsRaw) || stepsRaw.length === 0) v.errors.push('steps must be a non-empty array');
+  else {
+    const seen = new Set<string>();
+    for (const s of stepsRaw) {
+      const sv = new V(s);
+      const sid = sv.str('id', { pattern: ID });
+      const step = { id: sid!, needs: sv.strArr('needs', false), after: sv.strArr('after'), output: sv.str('output', { optional: true }) };
+      for (const a of step.after) if (!seen.has(a)) sv.errors.push(`step "${sid}" depends on unknown or later step "${a}"`);
+      if (sid) seen.add(sid);
+      v.errors.push(...sv.errors.map((e) => `steps.${e}`));
+      steps.push(step);
+    }
+  }
+  return v.errors.length ? { value: null, errors: v.errors } : { value: { id: id!, displayName: displayName!, steps }, errors: [] };
+}
+
+function readDir<T extends { id: string }>(dir: string, parse: (o: any) => { value: T | null; errors: string[] }, errors: Registries['errors']): Map<string, T> {
+  const out = new Map<string, T>();
+  if (!fs.existsSync(dir)) return out;
+  for (const f of fs.readdirSync(dir).filter((f) => f.endsWith('.json')).sort()) {
+    const file = path.join(dir, f);
+    let obj: unknown;
+    try {
+      obj = JSON.parse(fs.readFileSync(file, 'utf8'));
+    } catch (e) {
+      errors.push({ file, message: `invalid JSON: ${(e as Error).message}` });
+      continue;
+    }
+    const { value, errors: errs } = parse(obj);
+    if (!value) {
+      errors.push({ file, message: errs.join('; ') });
+      continue;
+    }
+    if (out.has(value.id)) {
+      errors.push({ file, message: `duplicate id "${value.id}"` });
+      continue;
+    }
+    out.set(value.id, value);
+  }
+  return out;
+}
+
+/** Load every registry and check references between them. */
+export function loadRegistries(configDir: string): Registries {
+  const errors: Registries['errors'] = [];
+  const runtimes = readDir(path.join(configDir, 'runtimes'), parseRuntime, errors);
+  const providers = readDir(path.join(configDir, 'providers'), parseProvider, errors);
+  const tools = readDir(path.join(configDir, 'tools'), parseToolServer, errors);
+  const playbooks = readDir(path.join(configDir, 'playbooks'), parsePlaybook, errors);
+  const residentsRaw = readDir(path.join(configDir, 'residents'), parseResident, errors);
+  const residents = new Map<string, Resident>();
+  for (const [id, r] of residentsRaw) {
+    const refErrors: string[] = [];
+    if (!runtimes.has(r.runtime)) refErrors.push(`runtime "${r.runtime}" is not registered`);
+    if (!providers.has(r.provider)) refErrors.push(`provider "${r.provider}" is not registered`);
+    for (const g of r.tools) {
+      const server = tools.get(g.server);
+      if (!server) {
+        refErrors.push(`tool server "${g.server}" is not registered`);
+        continue;
+      }
+      for (const sel of [...g.allow, ...g.ask]) {
+        if (!sel.startsWith('risk:') && !(sel in server.risk)) refErrors.push(`tool "${sel}" is not classified on server "${g.server}"`);
+        if (!sel.startsWith('risk:') && g.allow.includes(sel) && server.risk[sel] === 'exec') refErrors.push(`exec tool "${sel}" may only be granted under "ask"`);
+      }
+    }
+    if (refErrors.length) errors.push({ file: path.join(configDir, 'residents', `${id}.json`), message: refErrors.join('; ') });
+    else residents.set(id, r);
+  }
+  return { residents, runtimes, providers, tools, playbooks, errors };
+}
+
+/** Decide whether a resident's grant covers a tool, and how. Default: deny. */
+export function grantFor(resident: Resident, server: ToolServer, tool: string): 'allow' | 'ask' | 'deny' {
+  const cls = server.risk[tool];
+  if (!cls) return 'deny'; // unclassified tools are never exposed
+  const grant = resident.tools.find((g) => g.server === server.id);
+  if (!grant) return 'deny';
+  const matches = (sel: string) => sel === tool || sel === `risk:${cls}`;
+  if (grant.ask.some(matches)) return 'ask';
+  if (grant.allow.some(matches)) return cls === 'exec' ? 'ask' : 'allow';
+  return 'deny';
+}

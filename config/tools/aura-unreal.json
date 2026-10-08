@@ -1,0 +1,1 @@
+{"$comment":"Aura MCP (alpha). Unclassified until verified.","id":"aura-unreal","displayName":"Aura Unreal tools","kind":"mcp","transport":"stdio","commandEnv":"AURA_MCP_COMMAND","requires":["aura"],"exclusive":true,"leaseSeconds":1800,"risk":{}}
