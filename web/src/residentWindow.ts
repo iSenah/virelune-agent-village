@@ -210,7 +210,8 @@ export class ResidentWindow {
     const asks = (d.approvals as any[]).length
       ? el('div', { class: 'rw-asks' }, ...(d.approvals as any[]).map((a) => this.approvalCard(a, true)))
       : null;
-    this.body.replaceChildren(...[conn, this.notice ? el('div', { class: 'rw-notice' }, this.notice) : null, list, asks, this.compose].filter((x): x is HTMLElement => !!x));
+    const disclosure = d.profile.disclosure ? el('div', { class: 'rw-disclosure' }, d.profile.disclosure) : null;
+    this.body.replaceChildren(...[conn, disclosure, this.notice ? el('div', { class: 'rw-notice' }, this.notice) : null, list, asks, this.compose].filter((x): x is HTMLElement => !!x));
     if (stick) list.scrollTop = list.scrollHeight;
     else if (prevList) list.scrollTop = prevList.scrollTop;
     this.renderComposeState();
@@ -375,6 +376,7 @@ export class ResidentWindow {
         row('Runtime', p.runtime ? `${p.runtime.displayName}` : r.runtime, el('div', { class: 'hint' }, p.runtime?.adapterEnabled ? 'Adapter enabled' : 'Adapter not enabled yet: this resident cannot reply or run tasks')),
         row('Provider', p.provider ? `${p.provider.displayName}` : r.provider, p.provider ? el('div', { class: 'hint' }, `${billing[p.provider.billing] ?? p.provider.billing}. ${p.provider.notes}`) : null),
         row('Model', p.model ?? 'runtime default'),
+        p.disclosure ? row('Who this is', p.disclosure) : null,
         row('Workspace', el('code', {}, p.workspace), el('div', { class: 'hint' }, 'The only folder this resident may change, and only with your approval.')),
         row('Permissions', p.permissions, el('div', { class: 'hint' }, 'Tools only through the Tool Gateway; anything that executes code always asks you first.')),
         row('Budget', `$${p.budget.perTaskUsd} per task · $${p.budget.dailyUsd} per day · ${p.budget.maxTurns} turns`),

@@ -9,7 +9,7 @@
     "review",
     "programming"
   ],
-  "runtime": "claude-agent-sdk",
+  "runtime": "anthropic-messages",
   "provider": "anthropic",
   "model": "claude-sonnet-5-5",
   "building": "library",
@@ -18,9 +18,7 @@
     "color": "#c8643c"
   },
   "requires": [
-    "claude-agent-sdk",
-    "anthropic-api",
-    "git"
+    "anthropic-api"
   ],
   "focus": true,
   "tools": [],

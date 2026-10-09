@@ -181,6 +181,48 @@ async function codexSandboxSetup() {
   process.exit(code);
 }
 
+/**
+ * One small REAL request to a paid provider through the village adapter (Claude or Echo). It costs money, so it
+ * only runs when you pass --confirm-paid AND paid use is already allowed for that resident in the village.
+ */
+async function paidVerify() {
+  const id = rest.find((a) => !a.startsWith('--'));
+  if (!id || !['claude', 'echo'].includes(id)) {
+    console.error('Usage: npm run paid:verify -- <claude|echo> --confirm-paid');
+    process.exit(2);
+  }
+  const config = loadConfig();
+  const village = new Village(config, { adapters: (v) => createRuntimeAdapters(v, () => `http://127.0.0.1:${config.port}`) });
+  const resident = village.registries.residents.get(id)!;
+  const rt = village.registries.runtimes.get(resident.runtime)!;
+  const adapter = village.adapters.get(rt.kind);
+  const billing = village.billing.info(id);
+  console.log(`\n${resident.displayName} uses the ${billing.providerName} (${billing.kind}). Paid use in the village: ${billing.allowed ? 'ALLOWED' : 'off'}.`);
+  const fail = (msg: string) => {
+    console.error(msg);
+    village.close();
+    process.exit(1);
+  };
+  if (!flags.has('--confirm-paid')) fail('This makes one billed request. Re-run with --confirm-paid if you accept a small charge to your provider account.');
+  if (!billing.allowed) fail(`Paid use is off for ${resident.displayName}. Allow it in the village (Profile tab) first. This command never turns it on.`);
+  if (!adapter) fail(`No adapter for ${rt.displayName}.`);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(new Error('no reply within 2 minutes')), 120_000);
+  let code = 0;
+  try {
+    process.stdout.write(`\n${resident.displayName}: `);
+    const out = await adapter!.reply({ resident, runId: 'paid-verify', message: 'This is a one-time connection test from Virelune Agent Village. Reply with one short sentence that includes the words "village connection OK".', history: [], threadState: null, signal: controller.signal, onDelta: (t) => process.stdout.write(t), assertPaidAllowed: () => village.billing.assertAllowed(id, 'paid:verify') });
+    console.log(`\n\nVerified: a genuine ${billing.providerName} reply (${out.text.length} characters) through the village adapter.`);
+  } catch (e) {
+    console.error(`\n\n${resident.displayName} did not reply: ${(e as Error).message}`);
+    code = 1;
+  } finally {
+    clearTimeout(timer);
+    village.close();
+  }
+  process.exit(code);
+}
+
 switch (command) {
   case 'doctor':
     await doctor();
@@ -197,6 +239,9 @@ switch (command) {
   case 'codex-sandbox-setup':
     await codexSandboxSetup();
     break;
+  case 'paid-verify':
+    await paidVerify();
+    break;
   default:
-    console.log('Usage: node server/cli.ts <doctor [--offline] [--verbose] [--json] | export | codex-login | codex-verify | codex-sandbox-setup [--elevated]>');
+    console.log('Usage: node server/cli.ts <doctor [--offline] [--verbose] [--json] | export | codex-login | codex-verify | codex-sandbox-setup [--elevated] | paid-verify <claude|echo> --confirm-paid>');
 }

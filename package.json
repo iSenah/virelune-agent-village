@@ -15,6 +15,7 @@
     "codex:login": "node --disable-warning=ExperimentalWarning server/cli.ts codex-login",
     "codex:verify": "node --disable-warning=ExperimentalWarning server/cli.ts codex-verify",
     "codex:sandbox-setup": "node --disable-warning=ExperimentalWarning server/cli.ts codex-sandbox-setup",
+    "paid:verify": "node --disable-warning=ExperimentalWarning server/cli.ts paid-verify",
     "probe:sandbox": "node --disable-warning=ExperimentalWarning integrations/probes/codex-sandbox.ts"
   }
 }

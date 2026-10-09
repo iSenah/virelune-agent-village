@@ -1,0 +1,6 @@
+{
+  "id": "openai-responses",
+  "displayName": "OpenAI Responses API (streaming, key stays on Village Hall)",
+  "kind": "openai-responses",
+  "integration": "openai-api"
+}

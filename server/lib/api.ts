@@ -128,6 +128,12 @@ export function createServer(village: Village): http.Server {
         provider: pv ? { id: pv.id, displayName: pv.displayName, billing: pv.billing, notes: pv.notes } : null,
         model: r.model,
         workspace: village.workspaceFor(id),
+        // Who you are actually talking to, for API-powered residents.
+        disclosure: rt?.kind === 'openai-responses'
+          ? `This is the village's own ${r.displayName}, using the OpenAI API with your API key. It is not your ChatGPT: it has none of your ChatGPT conversations or memory, and your ChatGPT subscription does not pay for it.`
+          : rt?.kind === 'anthropic-messages'
+            ? `This is the village's own ${r.displayName}, using the Anthropic API with your API key. It is separate from your Claude.ai account: it has none of your Claude.ai chats, projects or memory, and a Claude subscription does not pay for it.`
+            : null,
         tools: r.tools.map((g) => {
           const t = reg.tools.get(g.server);
           return { server: g.server, displayName: t?.displayName ?? g.server, allow: g.allow, ask: g.ask, exclusive: t?.exclusive ?? false, classifiedTools: t ? Object.keys(t.risk).length : 0 };

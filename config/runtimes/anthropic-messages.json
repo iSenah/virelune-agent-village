@@ -1,0 +1,6 @@
+{
+  "id": "anthropic-messages",
+  "displayName": "Anthropic Messages API (streaming, key stays on Village Hall)",
+  "kind": "anthropic-messages",
+  "integration": "anthropic-api"
+}

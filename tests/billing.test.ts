@@ -34,8 +34,8 @@ class PaidFixture implements AgentAdapter {
 }
 
 function paidVillage(o: { dataDir?: string; env?: Record<string, string> } = {}) {
-  const claude = new PaidFixture('claude-agent-sdk');
-  const echo = new PaidFixture('openai-agents');
+  const claude = new PaidFixture('anthropic-messages');
+  const echo = new PaidFixture('openai-responses');
   const made = makeVillage({ adapters: [claude, echo], dataDir: o.dataDir, env: o.env });
   made.village.setDoctorResultsForTest(allReady());
   return { ...made, claude, echo };

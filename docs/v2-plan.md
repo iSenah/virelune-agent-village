@@ -26,7 +26,7 @@ Smaller notes for later: the browser loads up to 5,000 past events at startup (f
 ## Phases
 
 1. **Interactive resident chat** (done). Every resident opens from its figure, its building, or the residents list. The window has Chat, Tasks, Approvals and Profile tabs. History is stored in Village Hall's database. A message is delivered only to a connected resident with an enabled adapter; otherwise it is saved as "not delivered" with the reason, and nothing replies.
-2. **Real agent integrations.** 2A (built; Windows fixes in; waiting on your PC check): Codex through the Codex app-server, using the isolated Codex home and the Tool Gateway. 2B (done): per-resident paid-use switch. Then 2C: Claude (Claude Agent SDK, Anthropic API key) and Echo (OpenAI Agents SDK, OpenAI API key), behind that switch. Aura, Blender and Unreal MCP are investigated with real handshakes and stay disconnected until those pass.
+2. **Real agent integrations.** 2A (built; Windows fixes in; waiting on your PC check): Codex through the Codex app-server, using the isolated Codex home and the Tool Gateway. 2B (done): per-resident paid-use switch. 2C (built, mock-tested): Claude (Anthropic Messages API) and Echo (OpenAI Responses API), behind that switch. Aura, Blender and Unreal MCP are investigated with real handshakes and stay disconnected until those pass.
 3. **Supervised delegation.** Echo proposes a plan; you approve it; tasks run Echo → Claude → Codex → Echo in `virelune-sandbox`, every step an event.
 4. **Activity visualization.** Building lights, resident indicators and notifications for chat runs, task runs and approvals, keeping ambient life separate from real work.
 
@@ -90,6 +90,36 @@ Residents whose provider bills per use need **Allow paid use** switched on befor
 - **Not affected.** Codex uses your ChatGPT plan (subscription), so it has no paid switch and still refuses API-key sign-ins. Scribe (Ollama) is free and local; Aura is a subscription.
 - **Keys stay on the server.** API keys live only in Village Hall's `.env`. A test checks that the state, resident, event, doctor and page responses never contain them, and that `.env` and the database are never served.
 - **Budgets.** Each resident's per-task and daily budget is shown when you allow paid use, but it is **not enforced yet**. Set a monthly spending limit in your provider's dashboard.
+
+## Phase 2C: Claude and Echo adapters (built; not yet verified live)
+
+**Authentication options checked.** Claude needs an **Anthropic API key**: a Claude.ai subscription cannot be used by third-party apps. Echo needs an **OpenAI API key**: a ChatGPT subscription does not pay for API use. Both bill per use, so both sit behind **Allow paid use** (Phase 2B). Neither has a free or subscription route, so there is nothing to fall back to, and the village does not try.
+
+**Implementation.** The planned SDK packages (Claude Agent SDK, OpenAI Agents SDK) cannot be installed in the cloud workspace (no npm access), and the main residents only need conversation for now. So both adapters call the providers' official HTTP APIs directly with streaming, using Node's built-in `fetch`, with no packages to install on Windows:
+
+| Resident | Runtime | API | Notes |
+| --- | --- | --- | --- |
+| Claude | `anthropic-messages` | `POST https://api.anthropic.com/v1/messages`, `anthropic-version: 2023-06-01`, `stream: true` | Model `claude-sonnet-5-5` (current model ID, checked in Anthropic's docs). Event format checked against Anthropic's streaming docs |
+| Echo | `openai-responses` | `POST https://api.openai.com/v1/responses`, `stream: true`, `store: false` | Model `gpt-5.6-terra` from Echo's config. Event format follows OpenAI's documented Responses streaming events, but the cloud workspace cannot reach OpenAI to check it. Confirm the model name in your OpenAI dashboard |
+
+- **Paid-use gate.** Each adapter calls the paid-use check immediately before every request. With paid use off, or no key, no HTTP request is made.
+- **Keys.** Keys are read from Village Hall's `.env` and sent only to the provider. They never appear in the browser, events, saved messages or errors (tested). The adapters never read a base URL from `.env`, so a key cannot be redirected to another server.
+- **Identity.** Each resident gets its own role and identity in the system prompt. Both chats show a disclosure that this is the village's own API instance, not your ChatGPT or Claude.ai account, with none of those conversations or memory.
+- **No tools in chat yet.** Claude and Echo have no granted Tool Gateway tools, and the adapters offer none, so they cannot touch files. Tool use through the gateway comes with Phase 3 delegation.
+- **Handling.** Streaming into the chat, saved history (sent back as alternating turns), stop, timeouts and switching paid use off all close the HTTP stream. Errors are failures with a clear reason: bad key, rate or spending limit, overload, a mid-stream error, a cut-off stream, or a failed response. Length limits are marked in the saved reply.
+- **Variants stay locked.** Claude · Blender and Claude · Unreal keep the Agent SDK runtime, because they will need Blender and Unreal tools. They stay disconnected until those are verified. Scribe keeps its local Ollama setup.
+
+**What is verified.** Only mock-based tests (`tests/paid-adapters.test.ts`): a local fake server speaking the documented formats. **No live request has been made to Anthropic or OpenAI.** A live check needs your key and your permission to spend:
+
+```powershell
+# 1. Put the key in .env (ANTHROPIC_API_KEY=... and/or OPENAI_API_KEY=...), restart the village, Check integrations.
+# 2. In the village, open Claude (or Echo) > Profile > Allow paid use.
+# 3. One small billed request through the real adapter:
+npm run paid:verify -- claude --confirm-paid
+npm run paid:verify -- echo --confirm-paid
+```
+
+`paid:verify` refuses without `--confirm-paid`, and refuses while paid use is off. It never turns paid use on.
 
 ## Verify your first real Codex conversation (Windows)
 

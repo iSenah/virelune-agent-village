@@ -2,7 +2,7 @@
 
 A browser-based, stylized village where real AI agents work on real projects. Echo, the Mayor, coordinates. Codex builds, Claude designs and researches, and specialist residents join as their integrations are verified. Every sign of work in the village comes from a real backend event; nothing is simulated.
 
-**Status: Version 2, Phase 2B (paid API safeguards).** Village Hall (backend), registries, event log, task engine, approvals, Echo's autonomy setting, the Tool Gateway, `village doctor`, the 3D village, and a chat window for every resident all run. Codex can now reply for real through your ChatGPT plan, once it is signed in for the village (see [Verify your first real Codex conversation](docs/v2-plan.md#verify-your-first-real-codex-conversation-windows)). Every other resident still marks messages "not delivered" with the reason until its own adapter and checks are in place. See [docs/v2-plan.md](docs/v2-plan.md) for the V1 audit, the V2 phases and how to get your PC ready for the first agent, and [docs/phase-0-report.md](docs/phase-0-report.md) for the original research.
+**Status: Version 2, Phase 2C (Claude and Echo adapters, mock-tested).** Village Hall (backend), registries, event log, task engine, approvals, Echo's autonomy setting, the Tool Gateway, `village doctor`, the 3D village, and a chat window for every resident all run. Codex can now reply for real through your ChatGPT plan, once it is signed in for the village (see [Verify your first real Codex conversation](docs/v2-plan.md#verify-your-first-real-codex-conversation-windows)). Every other resident still marks messages "not delivered" with the reason until its own adapter and checks are in place. See [docs/v2-plan.md](docs/v2-plan.md) for the V1 audit, the V2 phases and how to get your PC ready for the first agent, and [docs/phase-0-report.md](docs/phase-0-report.md) for the original research.
 
 ## Quick start (Windows)
 
@@ -78,8 +78,8 @@ npm run codex:sandbox-setup # Windows: one-time Codex sandbox setup for the vill
 | Resident | What it needs on this machine |
 | --- | --- |
 | **Codex** | Codex CLI (`npm install -g @openai/codex`), then `npm run codex:login` (choose Sign in with ChatGPT), on Windows `npm run codex:sandbox-setup`, then `npm run codex:verify`. The village uses its **own** Codex home under `data/`, so your personal Codex settings and MCP servers are never loaded. API-key sign-ins are refused, and Codex's built-in apps (`codex_apps`), plugins, browser and computer use are switched off and checked on every launch. |
-| **Claude** | `ANTHROPIC_API_KEY` in `.env` (paid API; a Claude subscription can't be used by SDK apps). The Claude Agent SDK package is added in the next milestone. |
-| **Echo** | `OPENAI_API_KEY` in `.env` (paid API; no free tier). The OpenAI Agents SDK package is added in the next milestone. |
+| **Claude** | `ANTHROPIC_API_KEY` in `.env` (paid API; a Claude subscription can't be used by third-party apps), then **Allow paid use** in Claude's Profile. Optional live check: `npm run paid:verify -- claude --confirm-paid`. |
+| **Echo** | `OPENAI_API_KEY` in `.env` (paid API; a ChatGPT subscription does not cover it), then **Allow paid use** in Echo's Profile. The village's Echo is a separate API instance, not your ChatGPT. Optional live check: `npm run paid:verify -- echo --confirm-paid`. |
 
 Aura, Codex · Blender, Claude · Blender, Codex · Unreal, Claude · Unreal and Scribe are registered but stay **disconnected until each passes its own verification test**, even if their tools are installed.
 
@@ -114,7 +114,7 @@ Residents, runtimes, providers, tool servers and playbooks are JSON manifests in
 npm test
 ```
 
-93 tests cover the registries, event log, task engine, approvals, Echo autonomy, resident chat, the Codex adapter, paid-use authorization, the API, the village's event-to-visual mapping, the custom models, the village layout, exports and secrets, and the Tool Gateway's security boundaries. Three tests drive the real Codex CLI (gateway-only isolation, built-in tool sources switched off, refusing an unsigned village home); they are reported as skipped (not passed) when Codex is not installed. None of the tests use your Codex sign-in.
+102 tests cover the registries, event log, task engine, approvals, Echo autonomy, resident chat, the Codex, Claude and Echo adapters, paid-use authorization, the API, the village's event-to-visual mapping, the custom models, the village layout, exports and secrets, and the Tool Gateway's security boundaries. Three tests drive the real Codex CLI (gateway-only isolation, built-in tool sources switched off, refusing an unsigned village home); they are reported as skipped (not passed) when Codex is not installed. None of the tests use your Codex sign-in.
 
 ## Export without GitHub
 
