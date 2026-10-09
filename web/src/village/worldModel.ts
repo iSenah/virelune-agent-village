@@ -55,7 +55,13 @@ export type RoadSpec = {
 
 export type Crossing = { id: string; angle: number };
 
-export type Plateau = { id: string; height: number; outline: Vec2[] };
+export type Plateau = {
+  id: string;
+  height: number;
+  outline: Vec2[];
+  /** Angles (degrees from the fountain) where water falls from the edge down to the river. */
+  waterfalls?: number[];
+};
 
 export type World = {
   version: 1;
@@ -68,6 +74,8 @@ export type World = {
   crossings: Crossing[];
   roads: RoadSpec[];
   plateaus: Plateau[];
+  /** Flagstone squares at district crossroads (centred on a node), with lamp posts. */
+  squares?: { node: string; radius: number; name?: string; lamps?: number }[];
 };
 
 // ---------- river ----------
@@ -218,6 +226,34 @@ export function route(world: World, from: string, to: string, graph = walkGraph(
   return { points, length: best.get(to)!, via };
 }
 
+// ---------- ground ----------
+
+/** Ground height at a point: a plateau's height inside its outline, 0 elsewhere. */
+export function heightAt(world: World, x: number, z: number): number {
+  let h = 0;
+  for (const p of world.plateaus) if (p.height > h && insidePolygon([x, z], p.outline)) h = p.height;
+  return h;
+}
+
+/** Distance from the fountain to a plateau's edge along a direction (radians), or null if the ray misses it. */
+export function edgeDistance(outline: Vec2[], angle: number): number | null {
+  const dx = Math.cos(angle);
+  const dz = Math.sin(angle);
+  let best: number | null = null;
+  for (let i = 0; i < outline.length; i++) {
+    const [ax, az] = outline[i];
+    const [bx, bz] = outline[(i + 1) % outline.length];
+    const ex = bx - ax;
+    const ez = bz - az;
+    const den = dx * ez - dz * ex;
+    if (Math.abs(den) < 1e-9) continue;
+    const t = (ax * ez - az * ex) / den;
+    const u = (ax * dz - az * dx) / den;
+    if (t > 0 && u >= 0 && u <= 1 && (best === null || t < best)) best = t;
+  }
+  return best;
+}
+
 // ---------- validation ----------
 
 export function insidePolygon(p: Vec2, poly: Vec2[]): boolean {
@@ -288,6 +324,7 @@ export function validateWorld(world: World, homes: string[] = []): string[] {
       }
     }
   }
+  for (const sq of world.squares ?? []) if (!nodes.has(sq.node)) errs.push(`square at unknown point "${sq.node}"`);
   // Every building must be reachable on foot from the plaza.
   const g = walkGraph(world);
   const seen = new Set(['plaza']);

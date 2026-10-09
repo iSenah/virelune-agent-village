@@ -1,24 +1,16 @@
 // The hub look from the concept art, built procedurally: a crystal fountain on the plaza, a stone balustrade,
-// wooden fences along the roads, a river ring with arched wooden bridges, rocky cliffs with waterfalls,
-// and trails leading out of the village. Everything here is AMBIENT: deterministic, always the same,
+// wooden fences along the roads, a river ring with arched wooden bridges (one per crossing in the layout),
+// and waterfalls dropping from Scholars' Heights into creeks that feed the river. Everything here is AMBIENT: deterministic, always the same,
 // and never tied to (or suggestive of) agent activity.
 import { mergeGeometries } from '../../vendor/BufferGeometryUtils.js';
 import * as THREE from '../../vendor/three.module.js';
-import { glowSprite, mat, mesh, PALETTE, rng, road } from './kit.ts';
+import { glowSprite, mat, mesh, PALETTE, rng } from './kit.ts';
 import { lanternToward, type LampSpot } from './lamps.ts';
+import type { Fall } from './terrain.ts';
+import { BRIDGE_SPAN, RIVER_W, riverRadius, type World } from './worldModel.ts';
 
 export const PLAZA_R = 6.8;
-/** Trails leading out of the village between the buildings, in degrees (0 = +X / east, 90 = +Z / south). */
-export const SPOKES = [-124, -56, 0, 116];
-export const RIVER_W = 4.4;
-/** The river winds around the village at roughly this distance from the fountain. */
-export function riverRadius(theta: number): number {
-  return 41 + 1.6 * Math.sin(3 * theta + 0.7) + 0.8 * Math.sin(5 * theta);
-}
-const CLIFF_FROM = (-165 * Math.PI) / 180;
-const CLIFF_TO = (-15 * Math.PI) / 180;
-const CLIFF_R = 53;
-const WATERFALLS = [-90, -24];
+export { RIVER_W, riverRadius } from './worldModel.ts';
 
 const WOOD = 0x7a5231;
 const WOOD_DARK = 0x5a3b22;
@@ -317,7 +309,8 @@ function bridge(length: number, width: number): THREE.Group {
 }
 
 // ---------- rocks and cliffs ----------
-function rockField(items: { x: number; z: number; s: number; sy: number; rot: number; v: number; y?: number }[], detail = 0): THREE.InstancedMesh {
+/** Instanced boulders. `darken` lowers their lightness (cliff rocks are a little darker than bank stones). */
+export function rockField(items: { x: number; z: number; s: number; sy: number; rot: number; v: number; y?: number }[], detail = 0, darken = 0): THREE.InstancedMesh {
   const geo = new THREE.DodecahedronGeometry(1, detail);
   const im = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true, color: 0xffffff }), Math.max(1, items.length));
   const d = new THREE.Object3D();
@@ -328,7 +321,7 @@ function rockField(items: { x: number; z: number; s: number; sy: number; rot: nu
     d.scale.set(it.s, it.s * it.sy, it.s * (0.8 + it.v * 0.3));
     d.updateMatrix();
     im.setMatrixAt(i, d.matrix);
-    c.setHSL(0.07 + it.v * 0.03, 0.08 + it.v * 0.05, 0.42 + it.v * 0.16, THREE.SRGBColorSpace);
+    c.setHSL(0.07 + it.v * 0.03, 0.08 + it.v * 0.05, 0.42 + it.v * 0.16 - darken, THREE.SRGBColorSpace);
     im.setColorAt(i, c);
   });
   im.count = items.length;
@@ -340,9 +333,9 @@ function rockField(items: { x: number; z: number; s: number; sy: number; rot: nu
 export type Hub = {
   group: THREE.Group;
   lampSpots: LampSpot[];
-  /** True where trees and bushes should not grow (river, banks, trails, cliffs' waterfalls). */
+  /** True where trees and bushes should not grow (river, banks, waterfall pools). */
   blocked: (x: number, z: number, pad: number) => boolean;
-  /** Trail segments (for the landscape's keep-out). */
+  /** Bridges and creeks (for the landscape's keep-out). */
   segments: { a: THREE.Vector2; b: THREE.Vector2; r: number }[];
   update: (t: number) => void;
   setNight: (night: boolean) => void;
@@ -350,15 +343,15 @@ export type Hub = {
 
 /**
  * Build the hub. `roadAngles` are the directions (radians) of the roads leaving the plaza toward buildings;
- * the balustrade leaves openings there and at the outward trails.
+ * the balustrade leaves openings there and at the river crossings. `falls` come from the raised ground.
  */
-export function buildHub(roadAngles: number[]): Hub {
+export function buildHub(world: World, roadAngles: number[], falls: Fall[]): Hub {
   const g = new THREE.Group();
   const r = rng(303);
   const lampSpots: LampSpot[] = [];
   const segments: { a: THREE.Vector2; b: THREE.Vector2; r: number }[] = [];
   const animated: THREE.Texture[] = [];
-  const falls: THREE.Texture[] = [];
+  const fallTextures: THREE.Texture[] = [];
 
   const riverMat = waterMaterial(2, 1);
   animated.push(riverMat.map!);
@@ -368,8 +361,8 @@ export function buildHub(roadAngles: number[]): Hub {
   // fountain and balustrade
   const f = fountain(poolMat);
   g.add(f.group);
-  const spokeAngles = SPOKES.map((d) => (d * Math.PI) / 180);
-  g.add(balustrade(PLAZA_R + 1.25, [...roadAngles, ...spokeAngles]));
+  const crossingAngles = world.crossings.map((c) => (c.angle * Math.PI) / 180);
+  g.add(balustrade(PLAZA_R + 1.25, [...roadAngles, ...crossingAngles]));
 
   // river ring with banks
   const N = 280;
@@ -389,24 +382,22 @@ export function buildHub(roadAngles: number[]): Hub {
   const bankRocks: { x: number; z: number; s: number; sy: number; rot: number; v: number }[] = [];
   for (let i = 0; i < 260; i++) {
     const th = r() * Math.PI * 2;
+    if (crossingAngles.some((a) => Math.abs(Math.atan2(Math.sin(th - a), Math.cos(th - a))) < 0.07)) continue;
     const side = r() < 0.5 ? -1 : 1;
     const R = riverRadius(th) + side * (RIVER_W / 2 + 0.3 + r() * 1.2);
     bankRocks.push({ x: Math.cos(th) * R, z: Math.sin(th) * R, s: 0.35 + r() * 0.7, sy: 0.55 + r() * 0.3, rot: r() * 6, v: r() });
   }
+  g.add(rockField(bankRocks, 0));
 
-  // outward trails, each crossing the river on an arched bridge
-  spokeAngles.forEach((a, k) => {
+  // an arched wooden bridge at every river crossing (the roads to and from it are drawn with the other roads)
+  world.crossings.forEach((c) => {
+    const a = (c.angle * Math.PI) / 180;
     const dir = new THREE.Vector2(Math.cos(a), Math.sin(a));
     const R = riverRadius(a);
-    const span = RIVER_W + 3.4;
-    const inner = R - span / 2 - 0.6;
-    const outer = R + span / 2 + 0.6;
-    const end = a > CLIFF_FROM && a < CLIFF_TO ? CLIFF_R - 3 : 62;
     const p = (d: number) => dir.clone().multiplyScalar(d);
-    g.add(road(p(PLAZA_R + 1.4), p(inner), 1.7, 500 + k, false));
-    g.add(road(p(outer), p(end), 1.7, 520 + k, false));
-    segments.push({ a: p(PLAZA_R + 1.4), b: p(inner), r: 1.8 }, { a: p(outer), b: p(end), r: 1.8 });
-    const br = bridge(span, 2.3);
+    const inner = R - BRIDGE_SPAN / 2 - 0.6;
+    const outer = R + BRIDGE_SPAN / 2 + 0.6;
+    const br = bridge(BRIDGE_SPAN, 2.3);
     br.position.set(dir.x * R, 0, dir.y * R);
     br.rotation.y = -a;
     g.add(br);
@@ -414,70 +405,59 @@ export function buildHub(roadAngles: number[]): Hub {
     // a lamp post at the village end of each bridge, lantern hanging over the trail
     const side = new THREE.Vector2(-dir.y, dir.x).multiplyScalar(1.9);
     const lp = p(inner - 0.8).add(side);
-    lampSpots.push({ id: `bridge:${SPOKES[k]}`, label: `Bridge (${compass(a)})`, x: lp.x, y: 0, z: lp.y, rotY: lanternToward(-side.x, -side.y) });
+    lampSpots.push({ id: `bridge:${c.angle}`, label: `Bridge (${compass(a)})`, x: lp.x, y: 0, z: lp.y, rotY: lanternToward(-side.x, -side.y) });
   });
 
-  // cliffs along the back of the valley, with waterfalls feeding the river
-  const cliffRocks: { x: number; z: number; s: number; sy: number; rot: number; v: number; y?: number }[] = [];
-  const isFall = (a: number) => WATERFALLS.some((w) => Math.abs(a - (w * Math.PI) / 180) < 0.055);
-  const isTrail = (a: number) => spokeAngles.some((s) => Math.abs(a - s) < 0.05);
-  for (let i = 0; i < 230; i++) {
-    const a = CLIFF_FROM + r() * (CLIFF_TO - CLIFF_FROM);
-    if (isFall(a) || isTrail(a)) continue;
-    const layer = r();
-    const R = CLIFF_R + 1.5 + layer * 12;
-    const s = 2.4 + r() * 3.2;
-    cliffRocks.push({ x: Math.cos(a) * R, z: Math.sin(a) * R, s, sy: 1.3 + layer * 1.6 + r() * 0.6, rot: r() * 6, v: r(), y: s * 0.6 + layer * 3 });
-  }
-  // the cliff edge tapers into scattered boulders at both ends
-  for (let i = 0; i < 40; i++) {
-    const a = (r() < 0.5 ? CLIFF_FROM - r() * 0.35 : CLIFF_TO + r() * 0.35);
-    const R = CLIFF_R + r() * 10;
-    cliffRocks.push({ x: Math.cos(a) * R, z: Math.sin(a) * R, s: 1 + r() * 2, sy: 0.8 + r() * 0.7, rot: r() * 6, v: r() });
-  }
-  g.add(rockField(cliffRocks, 0));
-  g.add(rockField(bankRocks, 0));
-
+  // waterfalls down the edge of the raised ground, each feeding a creek that runs to the river
   const fallTex = new THREE.CanvasTexture(fallImage());
   fallTex.wrapS = fallTex.wrapT = THREE.RepeatWrapping;
   fallTex.colorSpace = THREE.SRGBColorSpace;
-  falls.push(fallTex);
+  fallTextures.push(fallTex);
   const fallMat = new THREE.MeshStandardMaterial({ map: fallTex, transparent: true, opacity: 0.9, roughness: 0.3, emissive: 0x2a5a70, emissiveIntensity: 0.5, side: THREE.DoubleSide, depthWrite: false });
   const creekMat = waterMaterial(1, 1);
   animated.push(creekMat.map!);
-  for (const wd of WATERFALLS) {
-    const a = (wd * Math.PI) / 180;
+  const sideRocks: { x: number; z: number; s: number; sy: number; rot: number; v: number; y?: number }[] = [];
+  const pools: { x: number; z: number; r: number }[] = [];
+  for (const fl of falls) {
+    const a = fl.angle;
     const dir = new THREE.Vector2(Math.cos(a), Math.sin(a));
-    const top = 9;
+    const across = new THREE.Vector2(-dir.y, dir.x);
+    const top = fl.height;
     // the fall itself: a curtain down the cliff face, facing the village
-    const fall = new THREE.Mesh(new THREE.PlaneGeometry(3.4, top, 1, 6), fallMat);
-    fall.position.set(dir.x * (CLIFF_R + 0.6), top / 2, dir.y * (CLIFF_R + 0.6));
+    const fall = new THREE.Mesh(new THREE.PlaneGeometry(3.2, top + 0.2, 1, 6), fallMat);
+    fall.position.set(dir.x * (fl.edge - 0.35), top / 2, dir.y * (fl.edge - 0.35));
     fall.rotation.y = -a - Math.PI / 2;
     fall.renderOrder = 2;
     g.add(fall);
-    // rock walls either side of the fall and a ledge on top
-    const sideRocks: { x: number; z: number; s: number; sy: number; rot: number; v: number; y?: number }[] = [];
+    // rocks either side of the fall
     for (const s of [-1, 1]) {
       for (let j = 0; j < 4; j++) {
-        const n = new THREE.Vector2(-dir.y, dir.x).multiplyScalar(s * (3 + j * 0.8));
-        const R = CLIFF_R + 1.5 + j * 1.2;
-        sideRocks.push({ x: dir.x * R + n.x, z: dir.y * R + n.y, s: 2.6 + j * 0.4, sy: 1.8 + (3 - j) * 0.2, rot: j + s, v: 0.3 + j * 0.1, y: 2.5 + j * 0.7 });
+        const n = across.clone().multiplyScalar(s * (2.6 + j * 0.5));
+        const R = fl.edge - 0.8 + j * 0.3;
+        sideRocks.push({ x: dir.x * R + n.x, z: dir.y * R + n.y, s: 1.5 + j * 0.25, sy: 1.2 + (3 - j) * 0.15, rot: j + s, v: 0.3 + j * 0.1, y: 1 + j * (top / 4) });
       }
     }
-    const R0 = CLIFF_R + 3.2;
-    sideRocks.push({ x: dir.x * R0, z: dir.y * R0, s: 3, sy: 1.6, rot: 1, v: 0.5, y: top - 2.2 });
-    g.add(rockField(sideRocks, 0));
+    // a short stream on top running to the edge
+    const upper: THREE.Vector2[] = [];
+    for (let i = 0; i <= 10; i++) {
+      const t = i / 10;
+      upper.push(dir.clone().multiplyScalar(fl.edge + 9 - t * 9).add(across.clone().multiplyScalar(Math.sin(t * Math.PI * 1.5) * 0.8)));
+    }
+    const upperCreek = new THREE.Mesh(ribbon(upper, () => 1.1, top + 0.04, false), creekMat);
+    upperCreek.receiveShadow = true;
+    g.add(upperCreek);
     // foam pool at the foot and a creek down to the river
-    const foam = new THREE.Mesh(new THREE.CircleGeometry(2.6, 14).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0xe6f6fb, roughness: 0.5, transparent: true, opacity: 0.85, emissive: 0x335566, emissiveIntensity: 0.3 }));
-    foam.position.set(dir.x * (CLIFF_R - 1.2), 0.07, dir.y * (CLIFF_R - 1.2));
+    const foot = dir.clone().multiplyScalar(fl.edge - 2.2);
+    const foam = new THREE.Mesh(new THREE.CircleGeometry(2.4, 14).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0xe6f6fb, roughness: 0.5, transparent: true, opacity: 0.85, emissive: 0x335566, emissiveIntensity: 0.3 }));
+    foam.position.set(foot.x, 0.07, foot.y);
     g.add(foam);
-    const from = dir.clone().multiplyScalar(CLIFF_R - 1);
+    pools.push({ x: foot.x, z: foot.y, r: 3.4 });
+    const from = dir.clone().multiplyScalar(fl.edge - 2);
     const to = dir.clone().multiplyScalar(riverRadius(a) + RIVER_W / 2 - 0.4);
     const pts: THREE.Vector2[] = [];
     for (let i = 0; i <= 16; i++) {
       const t = i / 16;
-      const wobble = new THREE.Vector2(-dir.y, dir.x).multiplyScalar(Math.sin(t * Math.PI * 2) * 0.9);
-      pts.push(from.clone().lerp(to, t).add(wobble));
+      pts.push(from.clone().lerp(to, t).add(across.clone().multiplyScalar(Math.sin(t * Math.PI * 2) * 0.9)));
     }
     const creekBank = new THREE.Mesh(ribbon(pts, () => 1.9, 0.01, false), bank.material as THREE.Material);
     creekBank.receiveShadow = true;
@@ -485,16 +465,16 @@ export function buildHub(roadAngles: number[]): Hub {
     const creek = new THREE.Mesh(ribbon(pts, () => 1.1, 0.055, false), creekMat);
     creek.receiveShadow = true;
     g.add(creek);
-    segments.push({ a: from.clone().add(dir.clone().multiplyScalar(2)), b: to, r: 2.8 });
+    segments.push({ a: from, b: to, r: 2.8 });
+    segments.push({ a: dir.clone().multiplyScalar(fl.edge), b: dir.clone().multiplyScalar(fl.edge + 9), r: 2.4 });
   }
+  if (sideRocks.length) g.add(rockField(sideRocks, 0));
 
   const blocked = (x: number, z: number, pad: number) => {
     const th = Math.atan2(z, x);
     const d = Math.hypot(x, z);
     if (Math.abs(d - riverRadius(th)) < RIVER_W / 2 + 1.4 + pad) return true;
-    // keep the cliff band for rocks (pines may grow on the far slopes)
-    if (th > CLIFF_FROM && th < CLIFF_TO && d > CLIFF_R - 1 && d < CLIFF_R + 7) return true;
-    return false;
+    return pools.some((p) => (x - p.x) ** 2 + (z - p.z) ** 2 < (p.r + pad) ** 2);
   };
 
   return {
@@ -505,7 +485,7 @@ export function buildHub(roadAngles: number[]): Hub {
     update: (t: number) => {
       // ambient only: water flows, the crystal turns slowly
       for (const tex of animated) tex.offset.y = -t * 0.05;
-      for (const tex of falls) tex.offset.y = t * 0.6;
+      for (const tex of fallTextures) tex.offset.y = t * 0.6;
       f.crystal.rotation.y = t * 0.25;
       f.crystal.position.y = 0.62 + 2.15 + Math.sin(t * 1.1) * 0.06;
     },

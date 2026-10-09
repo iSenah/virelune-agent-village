@@ -8,7 +8,7 @@ import { createServer } from '../server/lib/api.ts';
 import { PROJECT_ROOT } from '../server/lib/config.ts';
 import { loadRegistries } from '../server/lib/registry.ts';
 import { loadWorld } from '../server/lib/world.ts';
-import { allRoads, buildingRotY, entrance, route, validateWorld, type World } from '../web/src/village/worldModel.ts';
+import { allNodes, allRoads, buildingRotY, edgeDistance, entrance, footprintRadius, heightAt, riverRadius, route, validateWorld, type World } from '../web/src/village/worldModel.ts';
 import { makeVillage } from './helpers.ts';
 
 const reg = loadRegistries(path.join(PROJECT_ROOT, 'config'));
@@ -74,6 +74,45 @@ test('the Forgotten Woods are reached by a dirt road, and the Heights by stairs'
   assert.ok(kinds('plaza', 'b:gemini-observatory').includes('stairs'));
   assert.ok(kinds('plaza', 'b:copilot-commandery').includes('stairs'));
   assert.ok(kinds('plaza', 'b:tripo-stable').includes('bridge'));
+});
+
+test('Scholars\' Heights: raised ground, stairs that meet its edge, waterfalls clear of the stairs', () => {
+  const heights = world.plateaus.find((p) => p.id === 'heights')!;
+  assert.equal(heightAt(world, 0, 0), 0, 'the fountain is on the valley floor');
+  assert.equal(heightAt(world, 0, -64), 8, "the scholars' court is up on the Heights");
+  const nodes = allNodes(world);
+  const stairs = allRoads(world).filter((r) => r.kind === 'stairs');
+  assert.equal(stairs.length, 2);
+  for (const s of stairs) {
+    const [bottom, top] = [nodes.get(s.from)!, nodes.get(s.to)!].sort((a, b) => a[1] - b[1]);
+    assert.equal(heightAt(world, bottom[0], bottom[2]), 0, `${s.from}: the stairs start on the valley floor`);
+    assert.equal(heightAt(world, top[0], top[2]), 8, `${s.to}: and end on the Heights`);
+    const edge = edgeDistance(heights.outline, Math.atan2(top[2], top[0]))!;
+    assert.ok(Math.abs(Math.hypot(top[0], top[2]) - edge) < 1.5, 'the top step meets the cliff edge, not inside the plateau');
+    assert.ok(Math.hypot(bottom[0], bottom[2]) > riverRadius(Math.atan2(bottom[2], bottom[0])) + 4, 'the stairs start across the river');
+  }
+  assert.ok((heights.waterfalls ?? []).length >= 1);
+  for (const deg of heights.waterfalls ?? []) {
+    const a = (deg * Math.PI) / 180;
+    assert.ok(edgeDistance(heights.outline, a), `waterfall at ${deg}° falls from the edge`);
+    for (const s of stairs) {
+      const top = nodes.get(s.to)!;
+      const sa = Math.atan2(top[2], top[0]);
+      assert.ok(Math.abs(Math.atan2(Math.sin(a - sa), Math.cos(a - sa))) > 0.15, `waterfall at ${deg}° is clear of the stairs`);
+    }
+  }
+});
+
+test('district squares sit on known points and clear of the buildings', () => {
+  const nodes = allNodes(world);
+  assert.deepEqual((world.squares ?? []).map((s) => s.node).sort(), ['n:artisan', 'n:creative', 'n:heights']);
+  for (const sq of world.squares ?? []) {
+    const p = nodes.get(sq.node)!;
+    for (const x of world.buildings) assert.ok(Math.hypot(p[0] - x.x, p[2] - x.z) > sq.radius + footprintRadius(x), `${sq.node} overlaps ${x.id}`);
+  }
+  const w = structuredClone(world) as World;
+  w.squares!.push({ node: 'n:missing', radius: 4 });
+  assert.ok(validateWorld(w).some((e) => /square at unknown point "n:missing"/.test(e)));
 });
 
 test('the validator catches broken layouts', () => {

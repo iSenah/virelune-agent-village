@@ -3,16 +3,23 @@
 import { OrbitControls } from '../../vendor/OrbitControls.js';
 import { RoomEnvironment } from '../../vendor/RoomEnvironment.js';
 import * as THREE from '../../vendor/three.module.js';
-import { attachBuildingModel, BUILDINGS, buildBuilding, drawSign, plinthLampSpots, type BuildingHandle } from './buildings.ts';
+import { attachBuildingModel, buildBuilding, defFromSpec, drawSign, plinthLampSpots, PROCEDURAL_BODIES, type BuildingHandle } from './buildings.ts';
 import { applyCharacterStatus, attachCharacterModel, buildCharacter } from './characters.ts';
 import { activeLights, gpuName, sceneBreakdown } from './diagnostics.ts';
 import { AutoQuality, nextPixelRatio, PRESETS, type GraphicsChoice, type Preset } from './graphics.ts';
 import { buildHub, fenceAlong, PLAZA_R, type Hub } from './hub.ts';
-import { plaza, road } from './kit.ts';
+import { plaza } from './kit.ts';
 import { LampSet, lanternToward, type LampSpot } from './lamps.ts';
 import { instantiate, loadManifest, loadShared, modelMaterials, setLodScale, type ModelManifest } from './models.ts';
 import { grassGround, landscape, type Keepout } from './nature.ts';
+import { buildRoads } from './roads.ts';
 import type { BuildingVisual, ResidentLike, ResidentVisual } from './state.ts';
+import { buildTerrain, plateauFalls } from './terrain.ts';
+import { heightAt, type World } from './worldModel.ts';
+
+/** The whole-village view, and how far the camera may roam from the fountain. */
+const OVERVIEW = { pos: new THREE.Vector3(0, 185, 168), target: new THREE.Vector3(0, 0, -10) };
+const BOUNDS = { minX: -100, maxX: 100, minZ: -118, maxZ: 100 };
 
 
 export type LampInfo = { id: string; label: string; rotation: number; custom: boolean };
@@ -64,9 +71,12 @@ export class VillageScene {
   private dpr = Math.min(window.devicePixelRatio, 1.5);
 
   private canvas: HTMLCanvasElement;
+  private world: World;
+  private shadowFrame = { x: NaN, z: NaN, half: NaN };
 
-  constructor(canvas: HTMLCanvasElement) {
+  constructor(canvas: HTMLCanvasElement, world: World) {
     this.canvas = canvas;
+    this.world = world;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(this.dpr);
     this.renderer.shadowMap.enabled = true;
@@ -77,16 +87,16 @@ export class VillageScene {
     this.renderer.toneMappingExposure = 1.15;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.scene.background = new THREE.Color(0x2c3d2a);
-    this.scene.fog = new THREE.Fog(0x2c3d2a, 90, 190);
+    this.scene.fog = new THREE.Fog(0x2c3d2a, 230, 460);
     // Soft image-based light so the models' metal and PBR materials (e.g. Codex's brass) read correctly.
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     this.scene.environmentIntensity = 0.45;
     pmrem.dispose();
-    this.camera = new THREE.PerspectiveCamera(30, 1, 0.5, 400);
-    this.camera.position.set(0, 84, 98);
+    this.camera = new THREE.PerspectiveCamera(30, 1, 0.5, 700);
+    this.camera.position.copy(OVERVIEW.pos);
     this.controls = new OrbitControls(this.camera, canvas);
-    this.controls.target.set(0, 0, 1);
+    this.controls.target.copy(OVERVIEW.target);
     // Snappier feel: less drift after letting go, faster zoom, panning across the ground plane.
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.15;
@@ -95,7 +105,7 @@ export class VillageScene {
     this.controls.panSpeed = 1.1;
     this.controls.screenSpacePanning = false;
     this.controls.minDistance = 14;
-    this.controls.maxDistance = 150;
+    this.controls.maxDistance = 260;
     this.controls.maxPolarAngle = Math.PI * 0.43;
     this.hemi = new THREE.HemisphereLight(0xffe7c8, 0x3a2f28, 1.0);
     this.scene.add(this.hemi);
@@ -105,14 +115,11 @@ export class VillageScene {
     this.sun.position.set(-22, 40, 18);
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
-    const sc = this.sun.shadow.camera;
-    sc.left = -40;
-    sc.right = 40;
-    sc.top = 40;
-    sc.bottom = -40;
-    sc.far = 120;
+    this.sun.shadow.camera.far = 260;
     this.sun.shadow.bias = -0.0006;
     this.scene.add(this.sun);
+    this.scene.add(this.sun.target);
+    this.fitShadows();
     this.buildWorld();
     this.setNight(true);
     window.addEventListener('resize', () => this.resize());
@@ -132,7 +139,15 @@ export class VillageScene {
     window.addEventListener('keyup', (e) => this.keys.delete(e.key.toLowerCase()));
     window.addEventListener('blur', () => this.keys.clear());
     this.resize();
-    if (new URLSearchParams(location.search).has('diag')) (window as any).__villageDiagnostics = () => this.diagnostics();
+    if (new URLSearchParams(location.search).has('diag')) {
+      (window as any).__villageDiagnostics = () => this.diagnostics();
+      // For screenshots and measurements: put the camera somewhere exact.
+      (window as any).__villageCamera = (pos: number[], target: number[]) => {
+        this.camTween = null;
+        this.camera.position.set(pos[0], pos[1], pos[2]);
+        this.controls.target.set(target[0], target[1], target[2]);
+      };
+    }
     if (new URLSearchParams(location.search).has('stats')) this.setDiagnostics(true);
     this.renderer.setAnimationLoop(() => this.frame());
   }
@@ -140,25 +155,27 @@ export class VillageScene {
   private buildWorld() {
     // Top-level parts are named so the graphics diagnostics can show what each part costs.
     const named = <T extends THREE.Object3D>(o: T, name: string) => ((o.name = name), o);
-    this.scene.add(named(grassGround(170), 'ground'));
+    const world = this.world;
+    this.scene.add(named(grassGround(240), 'ground'));
     this.scene.add(named(plaza(PLAZA_R), 'plaza'));
-    const roads = named(new THREE.Group(), 'roads');
-    this.scene.add(roads);
-    const keepout: Keepout = { circles: [{ x: 0, z: 0, r: PLAZA_R + 2.8 }], segments: [] };
-    const spots: LampSpot[] = [];
+    const net = buildRoads(world, PLAZA_R);
+    this.scene.add(named(net.group, 'roads'));
+    const terrain = buildTerrain(world, net.keepout);
+    this.scene.add(named(terrain.group, 'terrain'));
+    const keepout: Keepout = {
+      circles: [{ x: 0, z: 0, r: PLAZA_R + 2.8 }, ...terrain.keepout.circles],
+      segments: [...net.keepout, ...terrain.keepout.segments],
+      heightAt: (x, z) => heightAt(world, x, z),
+    };
+    const spots: LampSpot[] = [...terrain.lampSpots];
     const roadAngles: number[] = [];
     const fences: { a: THREE.Vector2; b: THREE.Vector2; offset: number }[] = [];
-    BUILDINGS.forEach((def, i) => {
-      // road from the plaza edge to the building's front steps
-      const front = new THREE.Vector3(0, 0, def.d / 2 + 2.4).applyAxisAngle(new THREE.Vector3(0, 1, 0), def.rotY).add(new THREE.Vector3(def.x, 0, def.z));
-      const end = new THREE.Vector2(front.x, front.z);
-      const dir = end.clone().normalize();
-      const start = dir.clone().multiplyScalar(PLAZA_R + 0.3);
-      roads.add(road(start, end, 2.6, 100 + i));
+    // Founders' Square: lamp posts where each road leaves the plaza, and low fences along the roads.
+    for (const fr of net.foundersRoads) {
+      const def = world.buildings.find((x) => x.id === fr.building);
+      if (!def) continue;
+      const dir = fr.start.clone().normalize();
       roadAngles.push(Math.atan2(dir.y, dir.x));
-      keepout.segments.push({ a: start.clone(), b: end.clone(), r: 2.6 });
-      keepout.circles.push({ x: def.x, z: def.z, r: Math.hypot(def.w, def.d) / 2 + 1.6 });
-      // lamp posts flanking the road where it leaves the plaza, lanterns hanging over the road
       const right = new THREE.Vector2(-dir.y, dir.x);
       const at = dir.clone().multiplyScalar(PLAZA_R + 2.5);
       for (const s of [1, -1]) {
@@ -166,17 +183,23 @@ export class VillageScene {
         const p = at.clone().add(off);
         spots.push({ id: `road:${def.id}:${s > 0 ? 'right' : 'left'}`, label: `Road to ${def.place}, ${s > 0 ? 'right' : 'left'}`, x: p.x, y: 0, z: p.y, rotY: lanternToward(-off.x, -off.y) });
       }
-      fences.push({ a: dir.clone().multiplyScalar(PLAZA_R + 3.9), b: end.clone().sub(dir.clone().multiplyScalar(0.8)), offset: 2.1 });
+      fences.push({ a: dir.clone().multiplyScalar(PLAZA_R + 3.9), b: fr.end.clone().sub(dir.clone().multiplyScalar(0.8)), offset: 2.1 });
+    }
+    for (const spec of world.buildings) {
+      const def = defFromSpec(world, spec);
+      keepout.circles.push({ x: def.x, z: def.z, r: Math.hypot(def.w, def.d) / 2 + 1.6 });
       const b = buildBuilding(def);
       b.group.name = `building:${def.id}`;
       this.buildings.set(def.id, b);
       this.scene.add(b.group);
-      // lamp posts on the plinth, either side of the front steps
       b.group.updateMatrixWorld(true);
-      const steps = b.group.localToWorld(new THREE.Vector3(0, 0, def.d / 2 + 1.2));
-      for (const spot of plinthLampSpots(def)) {
-        const w = b.group.localToWorld(spot.local.clone());
-        spots.push({ id: `plinth:${def.id}:${spot.side}`, label: `${def.place}, ${spot.side} lamp`, x: w.x, y: w.y, z: w.z, rotY: lanternToward(steps.x - w.x, steps.z - w.z) });
+      // lamp posts on the plinth, either side of the front steps (new slots get theirs with their real model)
+      if (PROCEDURAL_BODIES.has(def.id)) {
+        const steps = b.group.localToWorld(new THREE.Vector3(0, 0, def.d / 2 + 1.2));
+        for (const spot of plinthLampSpots(def)) {
+          const w = b.group.localToWorld(spot.local.clone());
+          spots.push({ id: `plinth:${def.id}:${spot.side}`, label: `${def.place}, ${spot.side} lamp`, x: w.x, y: w.y, z: w.z, rotY: lanternToward(steps.x - w.x, steps.z - w.z) });
+        }
       }
       // Cheap invisible box for picking (testing the detailed models' triangles on every mouse move is very slow).
       const proxy = new THREE.Mesh(new THREE.BoxGeometry(def.w + 1.2, 9, def.d + 1.2), this.proxyMat);
@@ -184,9 +207,9 @@ export class VillageScene {
       proxy.userData.buildingId = def.id;
       b.group.add(proxy);
       this.pickProxies.push(proxy);
-    });
+    }
     this.scene.add(named(fenceAlong(fences), 'fences'));
-    this.hub = buildHub(roadAngles);
+    this.hub = buildHub(world, roadAngles, plateauFalls(world));
     this.hub.group.name = 'hub';
     this.scene.add(this.hub.group);
     spots.push(...this.hub.lampSpots);
@@ -198,8 +221,35 @@ export class VillageScene {
     this.lamps.group.name = 'lamps';
     this.scene.add(this.lamps.group);
     this.pickProxies.push(...this.lamps.proxies);
-    this.scene.add(named(landscape(keepout), 'landscape'));
+    const woods = world.districts.find((d) => d.id === 'woods');
+    this.scene.add(named(landscape(keepout, woods && { x: woods.center[0], z: woods.center[1], r: woods.radius }), 'landscape'));
     this.loadBuildingModels();
+  }
+
+  /**
+   * The sun's shadow covers the area around where the camera looks, wider when zoomed out, so the larger
+   * village keeps sharp shadows up close without a bigger shadow map. Re-rendered only when it moves.
+   */
+  private fitShadows() {
+    const t = this.controls.target;
+    const dist = this.camera.position.distanceTo(t);
+    const half = Math.min(110, Math.max(40, Math.ceil((dist * 0.55) / 10) * 10));
+    const step = half / 4;
+    const x = Math.round(t.x / step) * step;
+    const z = Math.round(t.z / step) * step;
+    const f = this.shadowFrame;
+    if (f.x === x && f.z === z && f.half === half) return;
+    this.shadowFrame = { x, z, half };
+    this.sun.target.position.set(x, 0, z);
+    this.sun.position.set(x - 44, 80, z + 36);
+    const sc = this.sun.shadow.camera;
+    sc.left = -half;
+    sc.right = half;
+    sc.top = half;
+    sc.bottom = -half;
+    sc.updateProjectionMatrix();
+    this.sun.target.updateMatrixWorld();
+    this.shadowDirty = true;
   }
 
   /** Choose a graphics preset, or 'auto' (starts at High and steps down only if frames stay slow). */
@@ -404,12 +454,29 @@ export class VillageScene {
     this.buildingVisuals = new Map(visuals.buildings.map((b) => [b.id, b]));
     this.applyBuildingVisuals();
     for (const [id, b] of this.buildings) {
-      // The sign speaks for the residents who live here in the village (figure shown), or all if none are shown.
+      // The sign speaks only from real registry state. Shared workplaces name who works there (no connection
+      // claims); building slots for planned residents or future services say so plainly.
+      const def = b.def;
+      let label: string;
+      let color: string;
       const here = residents.filter((r) => r.building === id);
-      const rs = here.some((r) => r.appearance.figure !== false) ? here.filter((r) => r.appearance.figure !== false) : here;
-      const connected = rs.filter((r) => r.status === 'connected').length;
-      const label = !rs.length ? 'No resident registered' : rs.every((r) => r.status === 'untested') ? 'Not checked yet' : connected ? `${connected}/${rs.length} connected` : rs.length > 1 ? `${rs.length} residents · disconnected` : 'Disconnected';
-      const color = !rs.length ? '#7d7466' : connected ? '#6fd08c' : rs.every((r) => r.status === 'untested') ? '#8aa0c8' : '#c97a6a';
+      if (def.kind === 'workplace') {
+        const ws = residents.filter((r) => r.workplaces?.includes(id));
+        label = ws.length ? `${ws.map((r) => r.displayName).join(' · ')} work here` : 'No one works here yet';
+        color = '#c9a45a';
+      } else if (!here.length) {
+        label = def.kind === 'service' ? 'Not connected · model coming' : 'No resident registered';
+        color = '#7d7466';
+      } else if (here.every((r) => r.planned)) {
+        label = 'Planned resident · not connected';
+        color = '#7d7466';
+      } else {
+        // The residents who live here in the village (figure shown), or all if none are shown.
+        const rs = here.some((r) => r.appearance.figure !== false) ? here.filter((r) => r.appearance.figure !== false) : here;
+        const connected = rs.filter((r) => r.status === 'connected').length;
+        label = rs.every((r) => r.status === 'untested') ? 'Not checked yet' : connected ? `${connected}/${rs.length} connected` : rs.length > 1 ? `${rs.length} residents · disconnected` : 'Disconnected';
+        color = connected ? '#6fd08c' : rs.every((r) => r.status === 'untested') ? '#8aa0c8' : '#c97a6a';
+      }
       const key = `${label}|${color}`;
       if (b.sign.userData.key !== key) {
         b.sign.userData.key = key;
@@ -522,7 +589,7 @@ export class VillageScene {
 
   /** Back to the whole-village view. */
   overview() {
-    this.camTween = { from: this.camera.position.clone(), to: new THREE.Vector3(0, 84, 98), tFrom: this.controls.target.clone(), tTo: new THREE.Vector3(0, 0, 1), start: performance.now() };
+    this.camTween = { from: this.camera.position.clone(), to: OVERVIEW.pos.clone(), tFrom: this.controls.target.clone(), tTo: OVERVIEW.target.clone(), start: performance.now() };
   }
 
   /** Keyboard: WASD / arrows pan, Q / E turn, + / - zoom, Home or 0 returns to the overview. */
@@ -570,10 +637,13 @@ export class VillageScene {
       this.camera.position.copy(this.controls.target).add(off.setLength(len));
       this.camTween = null;
     }
-    // keep the view over the village
+  }
+
+  /** Keep the view over the village (mouse panning and keyboard alike). */
+  private clampTarget() {
     const tgt = this.controls.target;
-    const lim = 60;
-    const clamped = new THREE.Vector3(THREE.MathUtils.clamp(tgt.x, -lim, lim), tgt.y, THREE.MathUtils.clamp(tgt.z, -lim, lim));
+    const clamped = new THREE.Vector3(THREE.MathUtils.clamp(tgt.x, BOUNDS.minX, BOUNDS.maxX), tgt.y, THREE.MathUtils.clamp(tgt.z, BOUNDS.minZ, BOUNDS.maxZ));
+    if (clamped.equals(tgt)) return;
     this.camera.position.add(clamped.clone().sub(tgt));
     tgt.copy(clamped);
   }
@@ -630,7 +700,9 @@ export class VillageScene {
       this.controls.target.lerpVectors(c.tFrom, c.tTo, k);
       if (t >= 1) this.camTween = null;
     }
+    this.clampTarget();
     this.controls.update();
+    if (this.sun.castShadow) this.fitShadows();
     // ---- ambient (not tied to agent activity) ----
     this.hub.update(t);
     const hall = this.buildings.get('town-hall');

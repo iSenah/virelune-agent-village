@@ -1,21 +1,48 @@
-// The seven village buildings, signboards and resident figures.
+// Village buildings, signboards and the procedural stand-in bodies. Positions come from the layout
+// (config/layout/world.json); the seven original buildings have procedural bodies until their custom models load.
+// New building slots (Tripo Stable, Runway Cinema, the Heights and the Woods) deliberately get NO generic house:
+// they show only a development marker until their real models arrive.
 import * as THREE from '../../vendor/three.module.js';
 import { house, mat, mesh, PALETTE, plinth, steps, tower } from './kit.ts';
+import { buildingRotY, groundY, type BuildingKind, type BuildingSpec, type World } from './worldModel.ts';
 
 /** title/subtitle/tagline are the signboard lines; place is the building's name in the resident list. */
-export type BuildingDef = { id: string; place: string; title: string; subtitle: string; tagline: string; x: number; z: number; rotY: number; w: number; d: number };
+export type BuildingDef = { id: string; place: string; title: string; subtitle: string; tagline: string; x: number; y: number; z: number; rotY: number; w: number; d: number; kind: BuildingKind; district: string; modelNote?: string };
 
-// Layout follows the reference: Town Hall at the head of the plaza, houses in a ring facing the fountain.
-const facePlaza = (x: number, z: number) => Math.atan2(-x, -z);
-const B = (id: string, place: string, title: string, subtitle: string, tagline: string, x: number, z: number, w: number, d: number): BuildingDef => ({ id, place, title, subtitle, tagline, x, z, rotY: facePlaza(x, z), w, d });
-export const BUILDINGS: BuildingDef[] = [
-  B('town-hall', 'Town Hall', 'Echo', 'Town Hall', 'Coordinator · Mayor', 0, -18, 11, 8),
-  B('library', 'Library & Archives', 'Claude', 'Library & Archives', 'Designer · Researcher', -20, -10, 9, 7.5),
-  B('unreal-workshop', 'Unreal Workshop', 'Aura', 'Unreal Workshop', '3D · Environments', 20, -10, 9, 7.5),
-  B('engineering-forge', 'Engineering Forge', 'Codex', 'Engineering Forge', 'Developer · Automation', -19, 13.5, 9, 7.5),
-  B('blender-house', 'Blender House', 'Blender House', '3D & Assets', 'Models · Textures', 22, 9.5, 9, 7.5),
-  B('unreal-studio', 'UE Studio', 'UE Studio', 'Unreal Engine', 'Levels · Blueprints', 14.5, 26, 9, 7.5),
-  B('post-office', 'Post Office', 'Scribe', 'Post Office', 'Notes · Summaries', 0, 23.5, 7, 6),
+/** The buildings that have a procedural stand-in body. Every other slot waits for its real model. */
+export const PROCEDURAL_BODIES = new Set(['town-hall', 'library', 'unreal-workshop', 'engineering-forge', 'blender-house', 'unreal-studio', 'post-office']);
+
+export function defFromSpec(world: World, b: BuildingSpec): BuildingDef {
+  return { id: b.id, place: b.place, title: b.title, subtitle: b.subtitle, tagline: b.tagline, x: b.x, y: groundY(world, b), z: b.z, rotY: buildingRotY(b), w: b.w, d: b.d, kind: b.kind, district: b.district, modelNote: b.modelNote };
+}
+
+const F = (id: string, place: string, title: string, subtitle: string, tagline: string, x: number, z: number, w: number, d: number): BuildingSpec => ({ id, place, title, subtitle, tagline, district: 'founders', kind: 'residence', x, z, w, d });
+/**
+ * Used only if Village Hall cannot send the layout: Founders' Square on its own, exactly as it has always been.
+ * The full layout (with the other districts) lives in config/layout/world.json.
+ */
+export const FALLBACK_WORLD: World = {
+  version: 1,
+  plazaRadius: 6.8,
+  districts: [{ id: 'founders', name: "Founders' Square", subtitle: 'Where the village began', center: [0, 0], radius: 36, elevation: 0 }],
+  buildings: [
+    F('town-hall', 'Town Hall', 'Echo', 'Town Hall', 'Coordinator · Mayor', 0, -18, 11, 8),
+    F('library', 'Library & Archives', 'Claude', 'Library & Archives', 'Designer · Researcher', -20, -10, 9, 7.5),
+    F('unreal-workshop', 'Unreal Workshop', 'Aura', 'Unreal Workshop', '3D · Environments', 20, -10, 9, 7.5),
+    F('engineering-forge', 'Engineering Forge', 'Codex', 'Engineering Forge', 'Developer · Automation', -19, 13.5, 9, 7.5),
+    F('post-office', 'Post Office', 'Scribe', 'Post Office', 'Notes · Summaries', 0, 23.5, 7, 6),
+  ],
+  nodes: {},
+  crossings: [-124, -56, 0, 116].map((angle) => ({ id: String(angle), angle })),
+  roads: ['town-hall', 'library', 'unreal-workshop', 'engineering-forge', 'post-office'].map((id) => ({ from: 'plaza', to: `b:${id}`, kind: 'cobble' as const })),
+  plateaus: [],
+};
+
+/** Display names, for the control panel before the layout arrives. */
+export const BUILDING_NAMES: [string, string][] = [
+  ...FALLBACK_WORLD.buildings.map((b) => [b.id, b.place] as [string, string]),
+  ['blender-house', 'Blender House'],
+  ['unreal-studio', 'UE Studio'],
 ];
 
 /** Where the two lamp posts flank a building's front (building-local coordinates, on the plinth top). */
@@ -143,7 +170,7 @@ function cubeEmblem(): THREE.Group {
 
 export function buildBuilding(def: BuildingDef): BuildingHandle {
   const group = new THREE.Group();
-  group.position.set(def.x, 0, def.z);
+  group.position.set(def.x, def.y, def.z);
   group.rotation.y = def.rotY;
   group.userData.buildingId = def.id;
   const windowMat = windowMaterial();
@@ -243,7 +270,7 @@ export function buildBuilding(def: BuildingDef): BuildingHandle {
     em.position.set(0, 4.4, 2.6);
     body.add(em);
     signY = 9.6;
-  } else {
+  } else if (def.id === 'post-office') {
     const h = house({ w: 4.6, d: 3.8, h: 2.8, roof: PALETTE.roofGreen, roofH: 2.0, windowsFront: 3 }, windowMat);
     body.add(h);
     chimney = h.userData.chimneyTop ?? null;

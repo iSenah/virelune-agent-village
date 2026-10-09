@@ -132,7 +132,7 @@
       "place": "Blender House",
       "title": "Blender House",
       "subtitle": "Shared Workspace",
-      "tagline": "Claude · Codex work here in Blender",
+      "tagline": "Blender · models & assets",
       "district": "creative",
       "kind": "workplace",
       "x": 64,
@@ -149,7 +149,7 @@
       "place": "UE Studio",
       "title": "UE Studio",
       "subtitle": "Shared Workspace",
-      "tagline": "Claude · Codex work here in Unreal",
+      "tagline": "Unreal Engine · levels",
       "district": "creative",
       "kind": "workplace",
       "x": 64,
@@ -266,29 +266,29 @@
       4
     ],
     "n:stair-w-bottom": [
-      -27.4,
+      -26.17,
       0,
-      -40.6
+      -38.8
     ],
     "n:stair-w-top": [
-      -31.9,
+      -31.09,
       8,
-      -47.3
+      -46.09
     ],
     "n:stair-e-bottom": [
-      27.4,
+      26.17,
       0,
-      -40.6
+      -38.8
     ],
     "n:stair-e-top": [
-      31.9,
+      31.09,
       8,
-      -47.3
+      -46.09
     ],
     "n:heights": [
       0,
       8,
-      -62
+      -64
     ],
     "n:woods-trail": [
       56,
@@ -534,7 +534,29 @@
           -72,
           -36
         ]
-      ]
+      ],
+      "waterfalls": [
+        -140,
+        -40
+      ],
+      "$comment": "Raised ground. 'waterfalls' are angles (degrees from the fountain) where water falls from the edge and runs down to the river."
+    }
+  ],
+  "squares": [
+    {
+      "node": "n:creative",
+      "radius": 5,
+      "name": "Workshops square"
+    },
+    {
+      "node": "n:artisan",
+      "radius": 6,
+      "name": "Artisan square"
+    },
+    {
+      "node": "n:heights",
+      "radius": 7,
+      "name": "Scholars' court"
     }
   ]
 }

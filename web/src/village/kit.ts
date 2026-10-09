@@ -1,5 +1,6 @@
 // Procedural building kit for the village: stone plinths, cobblestone paths, a star plaza, lanterns,
 // timber-framed houses, towers and signboards. Simple shapes, warm palette, no external assets.
+import { mergeGeometries } from '../../vendor/BufferGeometryUtils.js';
 import * as THREE from '../../vendor/three.module.js';
 
 export const PALETTE = {
@@ -121,7 +122,7 @@ function cobbleMesh(count: number) {
 }
 
 /** Weathered stone colour: warm greys and tans, the odd mossy or darker stone. */
-function stoneColor(c: THREE.Color, r: () => number, base = PALETTE.stone) {
+export function stoneColor(c: THREE.Color, r: () => number, base = PALETTE.stone) {
   const roll = r();
   c.setHex(base);
   if (roll < 0.08) c.lerp(new THREE.Color(0x6f7a4e), 0.35); // moss
@@ -192,6 +193,76 @@ export function road(a: THREE.Vector2, b: THREE.Vector2, width: number, seed: nu
   cm.receiveShadow = true;
   frame.add(cm);
   return g;
+}
+
+/**
+ * Many cobblestone road segments drawn together: the same stones, mortar and curbs as road(), but all segments
+ * share one mortar mesh, one instanced cobble mesh and one instanced curb mesh (three draw calls in total).
+ * Segments may be raised (y) for roads on Scholars' Heights.
+ */
+export class RoadBatch {
+  private mortar: THREE.BufferGeometry[] = [];
+  private cobbles: { m: THREE.Matrix4; c: THREE.Color }[] = [];
+  private curbs: { m: THREE.Matrix4; c: THREE.Color }[] = [];
+
+  add(a: THREE.Vector2, b: THREE.Vector2, width: number, seed: number, o: { y?: number; curbs?: boolean; extend?: number } = {}) {
+    const y = o.y ?? 0;
+    const ext = o.extend ?? 0; // overlap at bends so joints have no gaps
+    const dir = b.clone().sub(a);
+    const len0 = dir.length();
+    if (len0 < 0.05) return;
+    const angle = Math.atan2(dir.y, dir.x);
+    const len = len0 + ext * 2;
+    const frame = new THREE.Matrix4().compose(new THREE.Vector3((a.x + b.x) / 2, y, (a.y + b.y) / 2), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -angle), new THREE.Vector3(1, 1, 1));
+    const r = rng(seed);
+    this.mortar.push(new THREE.BoxGeometry(len, 0.3, width + 0.7).translate(0, 0.15, 0).applyMatrix4(frame));
+    const spacing = 0.44;
+    const cols = Math.max(2, Math.floor(width / spacing));
+    const rows = Math.max(2, Math.floor(len / spacing));
+    const d = new THREE.Object3D();
+    for (let ri = 0; ri < rows; ri++) {
+      for (let ci = 0; ci < cols; ci++) {
+        const along = -len / 2 + (ri + 0.5) * (len / rows) + (ci % 2 ? 0.11 : -0.11) + (r() - 0.5) * 0.07;
+        const across = (ci + 0.5) * (width / cols) - width / 2 + (r() - 0.5) * 0.06;
+        d.position.set(along, 0.31 + r() * 0.03, across);
+        d.rotation.set((r() - 0.5) * 0.06, r() * Math.PI, (r() - 0.5) * 0.06);
+        d.scale.set(0.92 + r() * 0.25, 0.9 + r() * 0.25, 0.88 + r() * 0.25);
+        d.updateMatrix();
+        const c = new THREE.Color();
+        stoneColor(c, r, PALETTE.sand);
+        this.cobbles.push({ m: frame.clone().multiply(d.matrix), c });
+      }
+    }
+    if (o.curbs === false) return;
+    const local: { m: THREE.Matrix4; c: THREE.Color }[] = [];
+    curbRow(len0, width / 2 + 0.2, r, local);
+    curbRow(len0, -width / 2 - 0.2, r, local);
+    for (const k of local) this.curbs.push({ m: frame.clone().multiply(k.m), c: k.c });
+  }
+
+  build(): THREE.Group {
+    const g = new THREE.Group();
+    if (this.mortar.length) g.add(mesh(mergeGeometries(this.mortar), mat(MORTAR), 0, 0, 0, false));
+    if (this.cobbles.length) {
+      const im = cobbleMesh(this.cobbles.length);
+      this.cobbles.forEach((k, i) => {
+        im.setMatrixAt(i, k.m);
+        im.setColorAt(i, k.c);
+      });
+      g.add(im);
+    }
+    if (this.curbs.length) {
+      const cm = new THREE.InstancedMesh(curbGeo, new THREE.MeshStandardMaterial({ roughness: 0.95, flatShading: true }), this.curbs.length);
+      this.curbs.forEach((k, i) => {
+        cm.setMatrixAt(i, k.m);
+        cm.setColorAt(i, k.c);
+      });
+      cm.castShadow = true;
+      cm.receiveShadow = true;
+      g.add(cm);
+    }
+    return g;
+  }
 }
 
 /** Central plaza: rings of cobbles in mortar, a curb of radial blocks, and a compass-star inlay. */

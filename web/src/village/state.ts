@@ -1,7 +1,7 @@
 // Pure mapping from REAL backend state + events to what the village shows. No randomness, no invented activity.
 // Ambient effects (time of day, lantern flicker, idle sway) live in the scene and never read from here.
 
-export type ResidentLike = { id: string; displayName: string; building: string; status: 'untested' | 'disconnected' | 'connected'; reasons: string[]; appearance: { lineage: string; color: string; figure?: boolean } };
+export type ResidentLike = { id: string; displayName: string; building: string; status: 'untested' | 'disconnected' | 'connected'; reasons: string[]; appearance: { lineage: string; color: string; figure?: boolean }; planned?: boolean; workplaces?: string[] };
 export type EventLike = { seq: number; type: string; actor: string; taskId: string | null; runId: string | null; payload: Record<string, any> };
 
 export type ResidentVisual = {

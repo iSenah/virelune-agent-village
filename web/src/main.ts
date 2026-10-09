@@ -1,6 +1,6 @@
 // Virelune Agent Village web app: the control panel and the 3D village, both reading the same live state.
 import { api, Store } from './store.ts';
-import { BUILDINGS } from './village/buildings.ts';
+import { BUILDING_NAMES, FALLBACK_WORLD } from './village/buildings.ts';
 import { CHOICES, parseChoice, PRESETS, type GraphicsChoice } from './village/graphics.ts';
 import { deriveActivity, deriveVisuals, describeEvent } from './village/state.ts';
 import type { LampInfo, VillageScene } from './village/scene.ts';
@@ -11,7 +11,7 @@ import { ResidentWindow } from './residentWindow.ts';
 const store = new Store();
 let scene: VillageScene | null = null;
 let selected: { building?: string; resident?: string } | null = null;
-const residentWindow = new ResidentWindow(store, new Map(BUILDINGS.map((b) => [b.id, b.place])));
+const residentWindow = new ResidentWindow(store, new Map(BUILDING_NAMES));
 
 /** The village layout from Village Hall (districts, buildings, who lives or works where). */
 type WorldInfo = { districts: { id: string; name: string; subtitle: string }[]; buildings: { id: string; place: string; district: string; kind: string; residents: string[]; workers: { profile: string; resident: string }[] }[] };
@@ -51,7 +51,9 @@ async function boot() {
       badge.className = `live ${m.failed.length ? 'off' : 'on'}`;
       badge.title = m.failed.length ? `Could not load: ${m.failed.map((f) => `${f.key} (${f.file}: ${f.error})`).join('; ')}. Placeholders are shown instead.` : 'Custom 3D models';
     });
-    scene = new VillageScene($<HTMLCanvasElement>('#village'));
+    // The village is built from the layout Village Hall sends (Founders' Square alone if it cannot be read).
+    await loadWorldInfo();
+    scene = new VillageScene($<HTMLCanvasElement>('#village'), (world as any) ?? FALLBACK_WORLD);
     scene.onSelect = (s) => openResident(s.building, s.resident);
     wireLamps(scene);
     wireGraphics(scene);
@@ -61,7 +63,7 @@ async function boot() {
   }
   store.subscribe(render);
   wireControls();
-  await loadWorldInfo();
+  if (!world) await loadWorldInfo();
   try {
     await store.start();
   } catch (e) {
@@ -295,7 +297,7 @@ function renderResidents() {
   const list = $('#residents');
   // Grouped by district and building, in layout order. Shared workplaces list who works there (through their
   // Blender/Unreal profiles); nobody lives at a workplace.
-  const places = world?.buildings ?? BUILDINGS.map((b) => ({ id: b.id, place: b.place, district: 'founders', kind: 'residence', residents: [], workers: [] as { profile: string; resident: string }[] }));
+  const places = world?.buildings ?? BUILDING_NAMES.map(([id, place]) => ({ id, place, district: 'founders', kind: 'residence', residents: [], workers: [] as { profile: string; resident: string }[] }));
   const districtName = new Map((world?.districts ?? []).map((d) => [d.id, d.name]));
   const known = new Set(places.map((b) => b.id));
   const names = new Map(s.residents.map((r: any) => [r.id, r.displayName]));
