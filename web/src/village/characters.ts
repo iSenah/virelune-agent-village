@@ -218,5 +218,8 @@ export function applyCharacterStatus(g: THREE.Group, status: 'untested' | 'disco
   const dim = status === 'connected' ? 1 : status === 'disconnected' ? 0.62 : 0.75;
   for (const { mat, base } of (g.userData.modelMats ?? []) as { mat: THREE.MeshStandardMaterial; base: THREE.Color }[]) mat.color.copy(base).multiplyScalar(dim);
   const ring = g.userData.ring as THREE.Mesh | undefined;
-  if (ring) (ring.material as THREE.MeshBasicMaterial).opacity = status === 'connected' ? 0.55 : 0;
+  if (ring) {
+    (ring.material as THREE.MeshBasicMaterial).opacity = status === 'connected' ? 0.55 : 0;
+    ring.visible = status === 'connected'; // no draw call while hidden
+  }
 }

@@ -52,6 +52,7 @@ test('each model file is a valid GLB with browser-sized textures', () => {
     if (group !== 'buildings' && group !== 'characters' && group !== 'props') continue;
     for (const [key, entry] of Object.entries(entries) as [string, any][]) {
       const file = path.join(MODELS, entry.file);
+      if (entry.lod) total += fs.statSync(path.join(MODELS, entry.lod)).size;
       assert.ok(fs.existsSync(file), `${key}: ${entry.file} is missing`);
       assert.ok(entry.width || entry.height, `${key}: needs a target width or height`);
       const { b, json, binStart } = readGlb(file);
@@ -88,6 +89,27 @@ after(() => {
   village.close();
 });
 
+test('distance versions: every building and character has a lighter copy with the same UV layout and tiny textures', () => {
+  for (const group of ['buildings', 'characters']) {
+    for (const [key, entry] of Object.entries(manifest[group]) as [string, any][]) {
+      assert.ok(entry.lod, `${key}: lod file listed`);
+      assert.ok(entry.lodDistance > 0, `${key}: switch distance`);
+      const full = readGlb(path.join(MODELS, entry.file)).json;
+      const { b, json, binStart } = readGlb(path.join(MODELS, entry.lod));
+      const tris = (j: any) => j.meshes.flatMap((m: any) => m.primitives).reduce((n: number, p: any) => n + j.accessors[p.indices].count / 3, 0);
+      assert.ok(tris(json) <= 25_000, `${key}: lod has ${tris(json)} triangles`);
+      assert.ok(tris(json) < tris(full) / 3, `${key}: lod is much lighter than the full model`);
+      const attrs = (j: any) => Object.keys(j.meshes[0].primitives[0].attributes).sort();
+      assert.ok(attrs(json).includes('TEXCOORD_0'), `${key}: lod keeps UVs so the full model's textures fit`);
+      for (const img of json.images ?? []) {
+        const view = json.bufferViews[img.bufferView];
+        const { w, h } = imageSize(b.subarray(binStart + (view.byteOffset ?? 0), binStart + (view.byteOffset ?? 0) + view.byteLength));
+        assert.ok(w <= 64 && h <= 64, `${key}: lod textures are placeholders (${w}x${h}); the full textures are reused`);
+      }
+    }
+  }
+});
+
 test('models are served with the right type and can be revalidated without re-downloading', async () => {
   const url = `${base}/assets/models/${manifest.characters.codex.file}`;
   const first = await fetch(url);
@@ -115,5 +137,17 @@ test('every browser TypeScript file compiles to JavaScript (what the server serv
   const dir = path.join(PROJECT_ROOT, 'web', 'src');
   const files = fs.readdirSync(dir, { recursive: true }).map(String).filter((f) => f.endsWith('.ts'));
   assert.ok(files.length > 5);
-  for (const f of files) assert.doesNotThrow(() => stripTypeScriptTypes(fs.readFileSync(path.join(dir, f), 'utf8'), { mode: 'strip' }), `web/src/${f} has invalid syntax`);
+  const { spawnSync } = await import('node:child_process');
+  const os = await import('node:os');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'virelune-websrc-'));
+  for (const f of files) {
+    let js = '';
+    assert.doesNotThrow(() => (js = stripTypeScriptTypes(fs.readFileSync(path.join(dir, f), 'utf8'), { mode: 'strip' })), `web/src/${f} has invalid syntax`);
+    // Also catch JavaScript early errors the type stripper does not (e.g. a variable declared twice).
+    const out = path.join(tmp, f.replace(/[\\/]/g, '_') + '.mjs');
+    fs.writeFileSync(out, js);
+    const check = spawnSync(process.execPath, ['--check', out], { encoding: 'utf8' });
+    assert.equal(check.status, 0, `web/src/${f}: ${check.stderr.split('\n').filter((l) => /Error/.test(l)).join(' ')}`);
+  }
+  fs.rmSync(tmp, { recursive: true, force: true });
 });

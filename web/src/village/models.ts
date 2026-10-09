@@ -4,7 +4,8 @@
 import { GLTFLoader } from '../../vendor/GLTFLoader.js';
 import * as THREE from '../../vendor/three.module.js';
 
-export type ModelEntry = { file: string; source?: string; width?: number; height?: number; rotateY?: number };
+/** lod: a lighter copy of the same model (same UVs) shown when it is far from the camera; it reuses the full model's textures. */
+export type ModelEntry = { file: string; source?: string; width?: number; height?: number; rotateY?: number; lod?: string; lodDistance?: number };
 export type ModelManifest = { version: number; buildings: Record<string, ModelEntry>; characters: Record<string, ModelEntry>; props?: Record<string, ModelEntry> };
 
 export type ModelStatus = { total: number; loaded: number; failed: { key: string; file: string; error: string }[] };
@@ -57,7 +58,7 @@ export async function instantiate(key: string, entry: ModelEntry): Promise<THREE
   modelStatus.total += 1;
   emitStatus();
   try {
-    const source = await fetchModel(entry.file);
+    const [source, lodSource] = await Promise.all([fetchModel(entry.file), entry.lod ? fetchModel(entry.lod).catch(() => null) : Promise.resolve(null)]);
     const inst = source.clone(true);
     inst.traverse((o: any) => {
       if (o.isMesh) o.material = Array.isArray(o.material) ? o.material.map((m: THREE.Material) => m.clone()) : o.material.clone();
@@ -66,8 +67,24 @@ export async function instantiate(key: string, entry: ModelEntry): Promise<THREE
     const size = box.getSize(new THREE.Vector3());
     const scale = entry.height ? entry.height / Math.max(size.y, 1e-6) : (entry.width ?? 1) / Math.max(size.x, 1e-6);
     const wrapper = new THREE.Group();
-    inst.position.set(-(box.min.x + size.x / 2), -box.min.y, -(box.min.z + size.z / 2));
-    wrapper.add(inst);
+    const offset = new THREE.Vector3(-(box.min.x + size.x / 2), -box.min.y, -(box.min.z + size.z / 2));
+    inst.position.copy(offset);
+    if (lodSource) {
+      // Distance detail: the full model up close, the lighter copy far away. The copy shares the full model's
+      // (per-instance) material, so textures load once and status tinting applies to both.
+      const lo = lodSource.clone(true);
+      const hiMesh = firstMesh(inst);
+      lo.traverse((o: any) => {
+        if (o.isMesh && hiMesh) o.material = hiMesh.material;
+      });
+      lo.position.copy(offset);
+      const lod = new THREE.LOD();
+      lod.addLevel(inst, 0);
+      lod.addLevel(lo, entry.lodDistance ?? 50);
+      lod.userData.baseDistance = entry.lodDistance ?? 50;
+      wrapper.add(lod);
+      wrapper.userData.lod = lod;
+    } else wrapper.add(inst);
     wrapper.scale.setScalar(scale);
     if (entry.rotateY) wrapper.rotation.y = entry.rotateY;
     wrapper.userData.modelKey = key;
@@ -100,12 +117,28 @@ export async function loadShared(key: string, entry: ModelEntry): Promise<THREE.
   }
 }
 
-/** Every standard material in a model instance, for status tinting. */
+function firstMesh(root: THREE.Object3D): THREE.Mesh | null {
+  let found: THREE.Mesh | null = null;
+  root.traverse((o: any) => {
+    if (!found && o.isMesh) found = o;
+  });
+  return found;
+}
+
+/** Every standard material in a model instance (once each), for status tinting. */
 export function modelMaterials(root: THREE.Object3D): THREE.MeshStandardMaterial[] {
-  const out: THREE.MeshStandardMaterial[] = [];
+  const out = new Set<THREE.MeshStandardMaterial>();
   root.traverse((o: any) => {
     if (!o.isMesh) return;
-    for (const m of Array.isArray(o.material) ? o.material : [o.material]) if (m && 'color' in m) out.push(m);
+    for (const m of Array.isArray(o.material) ? o.material : [o.material]) if (m && 'color' in m) out.add(m);
   });
-  return out;
+  return [...out];
+}
+
+/** Scale every distance-detail switch point in a subtree (1 = default, 0 = always the lighter copy). */
+export function setLodScale(root: THREE.Object3D, factor: number) {
+  root.traverse((o: any) => {
+    if (!o.isLOD || !o.levels?.[1]) return;
+    o.levels[1].distance = (o.userData.baseDistance ?? 50) * factor;
+  });
 }

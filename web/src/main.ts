@@ -1,6 +1,7 @@
 // Virelune Agent Village web app: the control panel and the 3D village, both reading the same live state.
 import { api, Store } from './store.ts';
 import { BUILDINGS } from './village/buildings.ts';
+import { CHOICES, parseChoice, PRESETS, type GraphicsChoice } from './village/graphics.ts';
 import { deriveActivity, deriveVisuals, describeEvent } from './village/state.ts';
 import type { LampInfo, VillageScene } from './village/scene.ts';
 
@@ -41,6 +42,7 @@ async function boot() {
     scene = new VillageScene($<HTMLCanvasElement>('#village'));
     scene.onSelect = (s) => openResident(s.building, s.resident);
     wireLamps(scene);
+    wireGraphics(scene);
   } catch (e) {
     // The control panel keeps working even if 3D cannot start (old GPU, WebGL disabled).
     $('#truth').textContent = `The 3D village could not start (${(e as Error).message}). The control panel still works.`;
@@ -94,6 +96,68 @@ function wireControls() {
     } catch (e) {
       alertLine(`Could not add task: ${(e as Error).message}`);
     }
+  });
+}
+
+/** Per-browser conveniences; storage may be unavailable (private windows), so failures are ignored. */
+const prefs = {
+  get(key: string): string | null {
+    try {
+      return localStorage.getItem(`virelune.${key}`);
+    } catch {
+      return null;
+    }
+  },
+  set(key: string, value: string) {
+    try {
+      localStorage.setItem(`virelune.${key}`, value);
+    } catch {
+      /* ignore */
+    }
+  },
+};
+
+/** Graphics menu: Auto / High / Medium / Low, and the diagnostics display (G). */
+function wireGraphics(sc: VillageScene) {
+  let diag = prefs.get('diagnostics') === '1' || new URLSearchParams(location.search).has('stats');
+  sc.setGraphics(parseChoice(prefs.get('graphics')));
+  sc.setDiagnostics(diag);
+  const btn = $<HTMLButtonElement>('#graphics');
+  const menu = $('#gfxmenu');
+  const render = () => {
+    const g = sc.graphics();
+    btn.textContent = `Graphics: ${g.choice === 'auto' ? `Auto (${g.preset.label})` : g.preset.label}`;
+    menu.replaceChildren(
+      el('div', { class: 'gfx-title' }, 'Graphics quality'),
+      ...CHOICES.map((c) =>
+        el('label', { class: 'gfx-opt' },
+          el('input', { type: 'radio', name: 'gfx', value: c.id, checked: g.choice === c.id, onchange: () => { prefs.set('graphics', c.id); sc.setGraphics(c.id as GraphicsChoice); render(); } }),
+          el('span', {}, el('strong', {}, c.label), el('span', { class: 'hint' }, c.id === 'auto' ? 'Starts at High and steps down only if frames stay slow.' : PRESETS[c.id as keyof typeof PRESETS].description)),
+        ),
+      ),
+      el('label', { class: 'gfx-opt' }, el('input', { type: 'checkbox', checked: diag, onchange: (e: Event) => { diag = (e.target as HTMLInputElement).checked; prefs.set('diagnostics', diag ? '1' : '0'); sc.setDiagnostics(diag); } }), el('span', {}, el('strong', {}, 'Show diagnostics'), el('span', { class: 'hint' }, 'Frame rate, draw calls, triangles and what each part of the village costs (G).'))),
+      el('div', { class: 'hint' }, 'Presets change only rendering cost. Every building, resident and landscape feature stays.'),
+    );
+  };
+  sc.onGraphics = () => render();
+  render();
+  btn.addEventListener('click', () => {
+    menu.hidden = !menu.hidden;
+    btn.setAttribute('aria-expanded', String(!menu.hidden));
+  });
+  document.addEventListener('click', (e) => {
+    if (!menu.hidden && !(e.target as HTMLElement).closest('.gfx')) {
+      menu.hidden = true;
+      btn.setAttribute('aria-expanded', 'false');
+    }
+  });
+  window.addEventListener('keydown', (e) => {
+    const t = e.target as HTMLElement;
+    if (e.key.toLowerCase() !== 'g' || e.ctrlKey || e.metaKey || e.altKey || /INPUT|TEXTAREA|SELECT/.test(t?.tagName ?? '')) return;
+    diag = !diag;
+    prefs.set('diagnostics', diag ? '1' : '0');
+    sc.setDiagnostics(diag);
+    render();
   });
 }
 

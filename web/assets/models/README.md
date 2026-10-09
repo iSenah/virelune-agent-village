@@ -20,6 +20,10 @@ Combination residents (Codex · Blender, Claude · Unreal, ...) reuse their runt
 
 These files are browser copies made with `scripts/optimize_glb.py`: textures resized from 2048 px to 1024 px and stored as JPEG, which cuts GPU texture memory for the village from about 600 MB to about 150 MB. Geometry, UVs, normals and tangents are byte-for-byte identical to the export, with one exception: the street lamp is repeated about 30 times, so it was also simplified from 80k to 12k triangles with [gltfpack](https://github.com/zeux/meshoptimizer) (`gltfpack -i Village_Street_Lamp.glb -o lamp.glb -si 0.08 -sp -se 0.03 -noq -kn -km`), which keeps its UVs and looks the same at village scale. All lamp posts share one instanced mesh. Keep the full-resolution originals in your art folder; they are not stored in this repo.
 
+## Distance versions (lod/)
+
+Each building and character has a lighter copy under `lod/` that the village shows when the model is far from the camera. It was made with gltfpack (`-si 0.15 -sp -se 0.02 -noq -kn -km`, which keeps UVs) and then `optimize_glb.py --size 16`: its own textures are tiny placeholders, because the village reuses the full model's textures. If you replace a model, regenerate its copy the same way, or remove the `lod` entry from `manifest.json` to always show the full model.
+
 ## Replacing or adding a model
 
 1. Export a GLB from Blender (front facing -Y in Blender, which becomes +Z in glTF).

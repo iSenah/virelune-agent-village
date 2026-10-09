@@ -256,9 +256,12 @@ export function buildBuilding(def: BuildingDef): BuildingHandle {
   st.position.set(0, 0.05, def.d / 2 + 1.2);
   st.rotation.y = Math.PI;
   group.add(st);
+  // The window light belongs to the building group, not the placeholder body (which is hidden once the custom
+  // model loads). It is only visible, and only costs anything, while it is actually on.
   const light = new THREE.PointLight(0xffb866, 0, 12, 1.6);
-  light.position.set(0, 3.2, 2.8);
-  body.add(light);
+  light.position.set(0, top + 3.2, 2.8);
+  light.visible = false;
+  group.add(light);
   const { sprite, canvas } = signboard(def, signY);
   group.add(sprite);
   // chimney smoke puffs: hidden unless a real run is active in this building
@@ -269,6 +272,7 @@ export function buildBuilding(def: BuildingDef): BuildingHandle {
       s.position.copy(chimney).add(new THREE.Vector3(0, top, 0));
       s.scale.setScalar(0.6);
       s.userData.phase = i / 4;
+      s.visible = false; // drawn only while a real run is active
       group.add(s);
       smoke.push(s);
     }
@@ -293,5 +297,5 @@ export function attachBuildingModel(b: BuildingHandle, model: THREE.Group) {
   const chimney = new THREE.Vector3(size.x * 0.22, top + size.y * 0.92, -size.z * 0.15);
   b.chimney = chimney.clone().sub(new THREE.Vector3(0, top, 0));
   for (const s of b.smoke) s.position.copy(chimney);
-  b.light.position.set(0, size.y * 0.45, size.z / 2 + 1.2);
+  b.light.position.set(0, top + size.y * 0.45, size.z / 2 + 1.2);
 }

@@ -5,10 +5,12 @@ import { RoomEnvironment } from '../../vendor/RoomEnvironment.js';
 import * as THREE from '../../vendor/three.module.js';
 import { attachBuildingModel, BUILDINGS, buildBuilding, drawSign, plinthLampSpots, type BuildingHandle } from './buildings.ts';
 import { applyCharacterStatus, attachCharacterModel, buildCharacter } from './characters.ts';
+import { activeLights, gpuName, sceneBreakdown } from './diagnostics.ts';
+import { AutoQuality, nextPixelRatio, PRESETS, type GraphicsChoice, type Preset } from './graphics.ts';
 import { buildHub, fenceAlong, PLAZA_R, type Hub } from './hub.ts';
 import { plaza, road } from './kit.ts';
 import { LampSet, lanternToward, type LampSpot } from './lamps.ts';
-import { instantiate, loadManifest, loadShared, modelMaterials, type ModelManifest } from './models.ts';
+import { instantiate, loadManifest, loadShared, modelMaterials, setLodScale, type ModelManifest } from './models.ts';
 import { grassGround, landscape, type Keepout } from './nature.ts';
 import type { BuildingVisual, ResidentLike, ResidentVisual } from './state.ts';
 
@@ -43,7 +45,16 @@ export class VillageScene {
   onLampRotate: (id: string, rotation: number | null) => void = () => {};
   private lamps!: LampSet;
   private hub!: Hub;
-  private stats: HTMLElement | null = null;
+  private diagEl: HTMLElement | null = null;
+  private graphicsChoice: GraphicsChoice = 'auto';
+  private preset: Preset = PRESETS.high;
+  private auto = new AutoQuality();
+  private lodFactor = 1;
+  private frameTimes: number[] = [];
+  private lastFrameAt = 0;
+  private diagSince = performance.now();
+  /** Called when the active preset changes (e.g. Auto stepping down). */
+  onGraphics: (info: { choice: GraphicsChoice; preset: Preset }) => void = () => {};
   private pendingHover: PointerEvent | null = null;
   private downAt: { x: number; y: number } | null = null;
   private keys = new Set<string>();
@@ -51,8 +62,6 @@ export class VillageScene {
   private proxyMat = new THREE.MeshBasicMaterial({ visible: false });
   private fpsWindow: number[] = [];
   private dpr = Math.min(window.devicePixelRatio, 1.5);
-  private statFrames = 0;
-  private statSince = performance.now();
 
   private canvas: HTMLCanvasElement;
 
@@ -123,18 +132,18 @@ export class VillageScene {
     window.addEventListener('keyup', (e) => this.keys.delete(e.key.toLowerCase()));
     window.addEventListener('blur', () => this.keys.clear());
     this.resize();
-    if (new URLSearchParams(location.search).has('stats')) {
-      // Optional performance readout: http://127.0.0.1:4317/?stats
-      this.stats = document.createElement('div');
-      this.stats.style.cssText = 'position:fixed;left:50%;top:84px;transform:translateX(-50%);z-index:9;font:12px monospace;color:#f2e9d8;background:rgba(0,0,0,.6);padding:4px 10px;border-radius:8px';
-      document.body.append(this.stats);
-    }
+    if (new URLSearchParams(location.search).has('diag')) (window as any).__villageDiagnostics = () => this.diagnostics();
+    if (new URLSearchParams(location.search).has('stats')) this.setDiagnostics(true);
     this.renderer.setAnimationLoop(() => this.frame());
   }
 
   private buildWorld() {
-    this.scene.add(grassGround(170));
-    this.scene.add(plaza(PLAZA_R));
+    // Top-level parts are named so the graphics diagnostics can show what each part costs.
+    const named = <T extends THREE.Object3D>(o: T, name: string) => ((o.name = name), o);
+    this.scene.add(named(grassGround(170), 'ground'));
+    this.scene.add(named(plaza(PLAZA_R), 'plaza'));
+    const roads = named(new THREE.Group(), 'roads');
+    this.scene.add(roads);
     const keepout: Keepout = { circles: [{ x: 0, z: 0, r: PLAZA_R + 2.8 }], segments: [] };
     const spots: LampSpot[] = [];
     const roadAngles: number[] = [];
@@ -145,7 +154,7 @@ export class VillageScene {
       const end = new THREE.Vector2(front.x, front.z);
       const dir = end.clone().normalize();
       const start = dir.clone().multiplyScalar(PLAZA_R + 0.3);
-      this.scene.add(road(start, end, 2.6, 100 + i));
+      roads.add(road(start, end, 2.6, 100 + i));
       roadAngles.push(Math.atan2(dir.y, dir.x));
       keepout.segments.push({ a: start.clone(), b: end.clone(), r: 2.6 });
       keepout.circles.push({ x: def.x, z: def.z, r: Math.hypot(def.w, def.d) / 2 + 1.6 });
@@ -159,6 +168,7 @@ export class VillageScene {
       }
       fences.push({ a: dir.clone().multiplyScalar(PLAZA_R + 3.9), b: end.clone().sub(dir.clone().multiplyScalar(0.8)), offset: 2.1 });
       const b = buildBuilding(def);
+      b.group.name = `building:${def.id}`;
       this.buildings.set(def.id, b);
       this.scene.add(b.group);
       // lamp posts on the plinth, either side of the front steps
@@ -175,8 +185,9 @@ export class VillageScene {
       b.group.add(proxy);
       this.pickProxies.push(proxy);
     });
-    this.scene.add(fenceAlong(fences));
+    this.scene.add(named(fenceAlong(fences), 'fences'));
     this.hub = buildHub(roadAngles);
+    this.hub.group.name = 'hub';
     this.scene.add(this.hub.group);
     spots.push(...this.hub.lampSpots);
     keepout.segments.push(...this.hub.segments);
@@ -184,10 +195,114 @@ export class VillageScene {
     for (const sp of spots) keepout.circles.push({ x: sp.x, z: sp.z, r: 1.1 });
     this.lamps = new LampSet(spots);
     this.lamps.onDirty = () => (this.shadowDirty = true);
+    this.lamps.group.name = 'lamps';
     this.scene.add(this.lamps.group);
     this.pickProxies.push(...this.lamps.proxies);
-    this.scene.add(landscape(keepout));
+    this.scene.add(named(landscape(keepout), 'landscape'));
     this.loadBuildingModels();
+  }
+
+  /** Choose a graphics preset, or 'auto' (starts at High and steps down only if frames stay slow). */
+  setGraphics(choice: GraphicsChoice) {
+    this.graphicsChoice = choice;
+    if (choice === 'auto') this.auto.current = 'high';
+    this.applyPreset(PRESETS[choice === 'auto' ? this.auto.current : choice]);
+  }
+
+  graphics() {
+    return { choice: this.graphicsChoice, preset: this.preset };
+  }
+
+  /**
+   * Presets only change rendering cost: resolution, shadows, how soon distant models use their lighter copy,
+   * and how much tiny ground detail (grass tufts, flowers) is drawn. Every building, resident and feature stays.
+   */
+  private applyPreset(p: Preset) {
+    const prev = this.preset;
+    this.preset = p;
+    const max = Math.min(window.devicePixelRatio, p.maxPixelRatio);
+    const next = Math.min(max, Math.max(Math.min(p.minPixelRatio, max), p.id === prev.id ? this.dpr : max));
+    if (next !== this.dpr) {
+      this.dpr = next;
+      this.renderer.setPixelRatio(next);
+      this.resize();
+    }
+    this.sun.castShadow = p.shadows;
+    if (this.sun.shadow.mapSize.x !== p.shadowMapSize) {
+      this.sun.shadow.mapSize.set(p.shadowMapSize, p.shadowMapSize);
+      this.sun.shadow.map?.dispose();
+      (this.sun.shadow as any).map = null;
+    }
+    const type = p.softShadows ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+    if (this.renderer.shadowMap.type !== type) {
+      this.renderer.shadowMap.type = type;
+      this.scene.traverse((o: any) => {
+        for (const m of o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : []) m.needsUpdate = true;
+      });
+    }
+    this.scene.traverse((o: any) => {
+      if (!o.userData.groundDetail) return;
+      o.userData.fullCount ??= o.count;
+      o.count = Math.floor(o.userData.fullCount * p.groundDetail);
+      o.visible = o.count > 0;
+    });
+    this.lodFactor = p.id === 'high' ? 1 : p.id === 'medium' ? 0.6 : 0;
+    setLodScale(this.scene, this.lodFactor);
+    this.shadowDirty = true;
+    this.onGraphics({ choice: this.graphicsChoice, preset: p });
+  }
+
+  /** Show or hide the frame-rate and graphics diagnostics display. */
+  setDiagnostics(on: boolean) {
+    if (on && !this.diagEl) {
+      this.diagEl = document.createElement('pre');
+      this.diagEl.className = 'diag';
+      this.diagEl.setAttribute('aria-label', 'Graphics diagnostics');
+      document.body.append(this.diagEl);
+      this.frameTimes = [];
+      this.diagSince = performance.now();
+    } else if (!on && this.diagEl) {
+      this.diagEl.remove();
+      this.diagEl = null;
+    }
+  }
+
+  private updateDiagnostics(now: number) {
+    if (!this.diagEl || now - this.diagSince < 1000) return;
+    const times = this.frameTimes;
+    this.frameTimes = [];
+    const secs = (now - this.diagSince) / 1000;
+    this.diagSince = now;
+    if (!times.length) return;
+    const avg = times.reduce((a, b) => a + b, 0) / times.length;
+    const worst = Math.max(...times);
+    const d = this.diagnostics();
+    const parts = d.parts.slice(0, 6).map((x) => `  ${x.part.padEnd(10)} ${String(x.draws).padStart(4)} draws ${String(Math.round(x.triangles / 1000)).padStart(5)}k tris`).join('\n');
+    this.diagEl.textContent = [
+      `${(times.length / secs).toFixed(0)} fps   frame ${avg.toFixed(1)} ms (worst ${worst.toFixed(0)} ms)`,
+      `graphics ${this.graphicsChoice === 'auto' ? `Auto → ${this.preset.label}` : this.preset.label}${this.preset.maxFps ? ` (cap ${this.preset.maxFps} fps)` : ''}   resolution ×${d.pixelRatio} (${d.canvas.width}×${d.canvas.height})`,
+      `${d.lastFrame.draws} draw calls   ${(d.lastFrame.triangles / 1000).toFixed(0)}k triangles`,
+      `shadows ${d.shadows}`,
+      `lights: ${d.lights.directional} sun, ${d.lights.point} point   textures ${d.memory.textures}   geometries ${d.memory.geometries}   shaders ${d.memory.programs}`,
+      `GPU ${d.gpu}`,
+      'by part (visible):',
+      parts,
+    ].join('\n');
+  }
+
+  /** What the village costs to draw right now (for the diagnostics display and the performance audit). */
+  diagnostics() {
+    const info = this.renderer.info;
+    return {
+      gpu: gpuName(this.renderer),
+      pixelRatio: this.dpr,
+      canvas: { width: this.renderer.domElement.width, height: this.renderer.domElement.height },
+      lastFrame: { draws: info.render.calls, triangles: info.render.triangles },
+      memory: { geometries: info.memory.geometries, textures: info.memory.textures, programs: info.programs?.length ?? 0 },
+      lights: activeLights(this.scene),
+      shadows: this.sun.castShadow ? `${this.sun.shadow.mapSize.x}px, updated only when something moves` : 'off',
+      parts: sceneBreakdown(this.scene),
+    };
   }
 
   /** Apply saved lamp rotations from the shared village layout. */
@@ -241,6 +356,7 @@ export class VillageScene {
       instantiate(id, entry)
         .then((model) => {
           attachBuildingModel(b, model);
+          setLodScale(model, this.lodFactor);
           b.group.userData.modelMats = modelMaterials(model).map((m) => ({ mat: m, base: m.color.clone() }));
           this.applyBuildingVisuals();
           this.shadowDirty = true;
@@ -256,6 +372,7 @@ export class VillageScene {
     try {
       const model = await instantiate(`character:${r.id}`, entry);
       attachCharacterModel(fig, model);
+      setLodScale(model, this.lodFactor);
       applyCharacterStatus(fig, this.lastStatus.get(r.id) ?? r.status);
       this.shadowDirty = true;
     } catch {
@@ -310,6 +427,7 @@ export class VillageScene {
       if (!f) {
         const fig = buildCharacter(r.id, r.appearance.lineage);
         fig.userData.residentId = r.id;
+        fig.name = `resident:${r.id}`;
         const siblings = shown.filter((x) => x.building === r.building);
         const idx = siblings.findIndex((x) => x.id === r.id);
         const spread = (idx - (siblings.length - 1) / 2) * 1.5;
@@ -352,6 +470,7 @@ export class VillageScene {
       b.windowMat.emissiveIntensity = lit ? (this.night ? 1.5 : 0.6) : v?.lit === 'unknown' ? 0.06 : 0;
       b.windowMat.color.set(lit ? 0x5a4a30 : 0x2a2f45);
       b.light.intensity = lit && this.night ? 14 : 0;
+      b.light.visible = b.light.intensity > 0; // invisible lights cost no shader time
       for (const m of b.accentMats) m.emissiveIntensity = lit ? 1.4 : 0.05;
       // Custom models have no separate window meshes, so the whole model reads a little dimmer while inactive.
       const dim = lit ? 1 : v?.lit === 'unknown' ? 0.85 : 0.72;
@@ -459,19 +578,24 @@ export class VillageScene {
     tgt.copy(clamped);
   }
 
-  /** Lower the render resolution on slower GPUs (and restore it when there is headroom). */
+  /** Lower the render resolution on slower GPUs (and restore it when there is headroom); Auto may change preset. */
   private adaptResolution(dt: number) {
     this.fpsWindow.push(dt);
     if (this.fpsWindow.length < 90) return;
-    const avg = this.fpsWindow.reduce((a, b) => a + b, 0) / this.fpsWindow.length;
+    const total = this.fpsWindow.reduce((a, b) => a + b, 0);
+    const avg = total / this.fpsWindow.length;
     this.fpsWindow = [];
     const fps = 1 / Math.max(avg, 1e-3);
-    const max = Math.min(window.devicePixelRatio, 1.5);
-    const next = fps < 40 ? Math.max(0.75, this.dpr - 0.25) : fps > 57 ? Math.min(max, this.dpr + 0.25) : this.dpr;
+    if (document.hidden) return;
+    const next = nextPixelRatio(fps, this.dpr, this.preset, window.devicePixelRatio);
     if (next !== this.dpr) {
       this.dpr = next;
       this.renderer.setPixelRatio(next);
       this.resize();
+    }
+    if (this.graphicsChoice === 'auto') {
+      const step = this.auto.observe(fps, this.dpr, total);
+      if (step) this.applyPreset(PRESETS[step]);
     }
   }
 
@@ -484,6 +608,11 @@ export class VillageScene {
   }
 
   private frame() {
+    const now = performance.now();
+    // Low preset: cap the frame rate to keep laptops cool (ambient animation just runs at the capped rate).
+    if (this.preset.maxFps && now - this.lastFrameAt < 1000 / this.preset.maxFps - 2) return;
+    if (this.lastFrameAt) this.frameTimes.push(now - this.lastFrameAt);
+    this.lastFrameAt = now;
     const rawDt = this.clock.getDelta();
     const dt = Math.min(rawDt, 0.05);
     const t = this.clock.elapsedTime;
@@ -506,20 +635,18 @@ export class VillageScene {
     this.hub.update(t);
     const hall = this.buildings.get('town-hall');
     if (hall?.group.userData.flag) hall.group.userData.flag.rotation.y = Math.sin(t * 1.7) * 0.18;
-    const now = new Date();
+    const clockTime = new Date();
     const hands = hall?.group.userData.clockHands;
     if (hands) {
-      hands[0].rotation.z = -((now.getMinutes() / 60) * Math.PI * 2);
-      hands[1].rotation.z = -(((now.getHours() % 12) / 12) * Math.PI * 2) + Math.PI / 2;
+      hands[0].rotation.z = -((clockTime.getMinutes() / 60) * Math.PI * 2);
+      hands[1].rotation.z = -(((clockTime.getHours() % 12) / 12) * Math.PI * 2) + Math.PI / 2;
     }
     // ---- activity-driven (from real state only) ----
     for (const [id, b] of this.buildings) {
       const busy = this.buildingVisuals.get(id)?.busy ?? false;
       for (const s of b.smoke) {
-        if (!busy) {
-          (s.material as THREE.SpriteMaterial).opacity = 0;
-          continue;
-        }
+        s.visible = busy; // no draw call while idle
+        if (!busy) continue;
         const p = (t * 0.35 + s.userData.phase) % 1;
         s.position.y = (b.chimney?.y ?? 0) + 0.95 + p * 2.2;
         s.scale.setScalar(0.5 + p * 1.1);
@@ -552,15 +679,6 @@ export class VillageScene {
       this.shadowDirty = false;
     }
     this.renderer.render(this.scene, this.camera);
-    if (this.stats) {
-      this.statFrames++;
-      const now = performance.now();
-      if (now - this.statSince > 1000) {
-        const info = this.renderer.info;
-        this.stats.textContent = `${((this.statFrames * 1000) / (now - this.statSince)).toFixed(0)} fps · ${info.render.calls} draws · ${(info.render.triangles / 1000).toFixed(0)}k tris · ${info.memory.textures} textures`;
-        this.statFrames = 0;
-        this.statSince = now;
-      }
-    }
+    this.updateDiagnostics(now);
   }
 }

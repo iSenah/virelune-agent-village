@@ -1,68 +1,92 @@
 {
   "version": 1,
-  "$comment": "Custom village models. width/height are target sizes in village units; models are scaled to fit and stand on the ground. 'source' is the original file name from the art export. Textures were resized to 1024 px by scripts/optimize_glb.py; geometry is unchanged, except the street lamp, which was simplified from 80k to 12k triangles with gltfpack (-si 0.08 -sp -se 0.03) because it is repeated around the village.",
+  "$comment": "Custom village models. width/height are target sizes in village units; models are scaled to fit and stand on the ground. 'source' is the original file name from the art export. Textures were resized to 1024 px by scripts/optimize_glb.py; geometry is unchanged, except the street lamp, which was simplified from 80k to 12k triangles with gltfpack (-si 0.08 -sp -se 0.03) because it is repeated around the village. Each building and character also has a lighter copy under lod/ (simplified with gltfpack -si 0.15 -sp -se 0.02, textures shrunk to 16 px because the full model's textures are reused) that is shown when the model is far from the camera.",
   "buildings": {
     "town-hall": {
       "file": "buildings/town-hall.glb",
       "source": "Echo_Building.glb",
-      "width": 10.5
+      "width": 10.5,
+      "lod": "lod/buildings/town-hall.glb",
+      "lodDistance": 70
     },
     "library": {
       "file": "buildings/library.glb",
       "source": "Claude_Building.glb",
-      "width": 8.4
+      "width": 8.4,
+      "lod": "lod/buildings/library.glb",
+      "lodDistance": 70
     },
     "engineering-forge": {
       "file": "buildings/engineering-forge.glb",
       "source": "Codex_Building.glb",
-      "width": 8.4
+      "width": 8.4,
+      "lod": "lod/buildings/engineering-forge.glb",
+      "lodDistance": 70
     },
     "unreal-workshop": {
       "file": "buildings/unreal-workshop.glb",
       "source": "Aura_Building.glb",
-      "width": 8.4
+      "width": 8.4,
+      "lod": "lod/buildings/unreal-workshop.glb",
+      "lodDistance": 70
     },
     "blender-house": {
       "file": "buildings/blender-house.glb",
       "source": "Blue_Building.glb",
-      "width": 8.4
+      "width": 8.4,
+      "lod": "lod/buildings/blender-house.glb",
+      "lodDistance": 70
     },
     "post-office": {
       "file": "buildings/post-office.glb",
       "source": "Scribe_Building.glb",
-      "width": 6.6
+      "width": 6.6,
+      "lod": "lod/buildings/post-office.glb",
+      "lodDistance": 70
     },
     "unreal-studio": {
       "file": "buildings/unreal-studio.glb",
       "source": "Unreal_Building.glb",
-      "width": 8.4
+      "width": 8.4,
+      "lod": "lod/buildings/unreal-studio.glb",
+      "lodDistance": 70
     }
   },
   "characters": {
     "echo": {
       "file": "characters/echo.glb",
       "source": "Echo.glb",
-      "height": 2.1
+      "height": 2.1,
+      "lod": "lod/characters/echo.glb",
+      "lodDistance": 45
     },
     "claude": {
       "file": "characters/claude.glb",
       "source": "Claude.glb",
-      "height": 2.4
+      "height": 2.4,
+      "lod": "lod/characters/claude.glb",
+      "lodDistance": 45
     },
     "codex": {
       "file": "characters/codex.glb",
       "source": "Codex.glb",
-      "height": 2.4
+      "height": 2.4,
+      "lod": "lod/characters/codex.glb",
+      "lodDistance": 45
     },
     "aura": {
       "file": "characters/aura.glb",
       "source": "Aura.glb",
-      "height": 2.6
+      "height": 2.6,
+      "lod": "lod/characters/aura.glb",
+      "lodDistance": 45
     },
     "scribe": {
       "file": "characters/scribe.glb",
       "source": "Scribe.glb",
-      "height": 2.2
+      "height": 2.2,
+      "lod": "lod/characters/scribe.glb",
+      "lodDistance": 45
     }
   },
   "props": {

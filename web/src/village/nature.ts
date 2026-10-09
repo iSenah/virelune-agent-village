@@ -155,7 +155,9 @@ export function landscape(k: Keepout): THREE.Group {
   // --- flowers (no shadows; tiny)
   const flowers = scatter(k, 420, 51, 7, 40, 0.35);
   const palette = [0xf2c94c, 0xf5f0e6, 0xe58fb3, 0xb59cf0, 0xf08a4b];
-  g.add(instanced(new THREE.IcosahedronGeometry(0.09, 0), new THREE.MeshStandardMaterial({ roughness: 0.7, flatShading: true, color: 0xffffff }), flowers, (d) => (d.position.y = 0.12), (c, it) => c.setHex(palette[Math.floor(it.v * palette.length)]), false));
+  const flowerMesh = instanced(new THREE.IcosahedronGeometry(0.09, 0), new THREE.MeshStandardMaterial({ roughness: 0.7, flatShading: true, color: 0xffffff }), flowers, (d) => (d.position.y = 0.12), (c, it) => c.setHex(palette[Math.floor(it.v * palette.length)]), false);
+  flowerMesh.userData.groundDetail = true;
+  g.add(flowerMesh);
   // --- grass tufts: a few thin blades per tuft
   const blades: THREE.BufferGeometry[] = [];
   for (let i = 0; i < 5; i++) {
@@ -167,6 +169,8 @@ export function landscape(k: Keepout): THREE.Group {
     blades.push(b);
   }
   const tufts = scatter(k, 1400, 61, 6.5, 55, 0.3);
-  g.add(instanced(mergeGeometries(blades), new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true, color: 0xffffff }), tufts, () => {}, (c, it) => c.setHSL(0.25 + it.v * 0.07, 0.5, 0.32 + it.v * 0.1, THREE.SRGBColorSpace), false));
+  const tuftMesh = instanced(mergeGeometries(blades), new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true, color: 0xffffff }), tufts, () => {}, (c, it) => c.setHSL(0.25 + it.v * 0.07, 0.5, 0.32 + it.v * 0.1, THREE.SRGBColorSpace), false);
+  tuftMesh.userData.groundDetail = true;
+  g.add(tuftMesh);
   return g;
 }
