@@ -73,6 +73,7 @@ async function boot() {
     scene.onSelect = (s) => openResident(s.building, s.resident);
     wireLamps(scene);
     wireGraphics(scene);
+    wireGoTo(scene);
   } catch (e) {
     // The control panel keeps working even if 3D cannot start (old GPU, WebGL disabled).
     $('#truth').textContent = `The 3D village could not start (${(e as Error).message}). The control panel still works.`;
@@ -184,7 +185,7 @@ function wireGraphics(sc: VillageScene) {
     btn.setAttribute('aria-expanded', String(!menu.hidden));
   });
   document.addEventListener('click', (e) => {
-    if (!menu.hidden && !(e.target as HTMLElement).closest('.gfx')) {
+    if (!menu.hidden && !btn.parentElement!.contains(e.target as Node)) {
       menu.hidden = true;
       btn.setAttribute('aria-expanded', 'false');
     }
@@ -196,6 +197,42 @@ function wireGraphics(sc: VillageScene) {
     prefs.set('diagnostics', diag ? '1' : '0');
     sc.setDiagnostics(diag);
     render();
+  });
+}
+
+/** Go to: fly the camera to the whole village, a district or a building. Never opens or changes anything else. */
+function wireGoTo(sc: VillageScene) {
+  const btn = $<HTMLButtonElement>('#goto');
+  const menu = $('#gotomenu');
+  const close = () => {
+    menu.hidden = true;
+    btn.setAttribute('aria-expanded', 'false');
+  };
+  const go = (fn: () => void) => () => {
+    fn();
+    close();
+  };
+  const render = () => {
+    const districts = world?.districts ?? [{ id: 'founders', name: "Founders' Square", subtitle: '' }];
+    const buildings = world?.buildings ?? BUILDING_NAMES.map(([id, place]) => ({ id, place, district: 'founders' }));
+    menu.replaceChildren(
+      el('button', { type: 'button', onclick: go(() => sc.overview()) }, el('span', { class: 'key' }, 'Home'), 'Whole village'),
+      ...districts.flatMap((d, i) => [
+        el('button', { type: 'button', class: 'district', onclick: go(() => sc.focusDistrict(d.id)) }, i < 9 ? el('span', { class: 'key' }, String(i + 1)) : null, d.name),
+        ...buildings.filter((b) => b.district === d.id).map((b) => el('button', { type: 'button', class: 'building', onclick: go(() => sc.focusBuilding(b.id)) }, b.place)),
+      ]),
+    );
+  };
+  btn.addEventListener('click', () => {
+    render();
+    menu.hidden = !menu.hidden;
+    btn.setAttribute('aria-expanded', String(!menu.hidden));
+  });
+  document.addEventListener('click', (e) => {
+    if (!menu.hidden && !btn.parentElement!.contains(e.target as Node)) close();
+  });
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !menu.hidden) close();
   });
 }
 

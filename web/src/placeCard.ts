@@ -48,7 +48,7 @@ export class PlaceCard {
       ['District', district ? `${district.name} · ${district.subtitle}` : b.district],
       ['Lives here', b.residents.length ? el('span', { class: 'chips' }, ...b.residents.map((r) => residentBtn(r))) : b.kind === 'workplace' ? 'Nobody. Residents come here to work.' : 'Nobody yet.'],
     ];
-    if (b.workers.length) rows.push(['Works here', el('div', {}, el('span', { class: 'chips' }, ...[...byResident.keys()].map((r) => residentBtn(r))), el('p', { class: 'hint' }, `Through ${b.workers.map((x) => x.profile).join(', ')}. These are execution profiles of the same residents, not extra residents.`))]);
+    if (b.workers.length) rows.push(['Works here', el('div', {}, el('span', { class: 'chips' }, ...[...byResident.keys()].map((r) => residentBtn(r))), el('p', { class: 'hint' }, `Through their ${b.place} profiles (${[...byResident.keys()].map((r) => `${names.get(r) ?? r} · ${b.place}`).join(', ')}). These are execution profiles of the same residents, not extra residents.`))]);
     if (b.kind === 'service') rows.push(['Connection', 'Not connected. No integration exists for this building yet, so nothing here can run.']);
     else if (b.kind === 'workplace') rows.push(['Connection', "Uses each resident's own connection. Their status is shown on their own card."]);
     if (b.modelNote) rows.push(['Model', `Coming: ${b.modelNote}. Until it arrives, a development marker shows the slot (Graphics → Show building slots).`]);

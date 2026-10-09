@@ -72,3 +72,17 @@ Five slots wait for their models: Tripo Stable, Runway Cinema, Gemini Observator
 3. If its footprint or door differs, adjust `x`, `z`, `w`, `d` or `face` for that building in `config/layout/world.json` and run `npm test`. The layout checks catch overlaps, unreachable entrances, and buildings hanging off the Heights.
 
 The marker disappears on its own; the plinth, sign, lamps and road stay.
+
+## Milestone 5: camera, navigation and selection (done)
+
+- **Go to** in the top bar flies the camera to the whole village, to one of the five districts, or to any building, grouped by district. It only moves the camera.
+- Keyboard:
+  - **Home** or **0**: whole village;
+  - **1** to **5**: the districts in layout order (1 is Founders' Square, with the classic view of the square);
+  - WASD or the arrows pan, Q and E turn, + and − zoom, as before.
+- District views keep the side the camera is already on, so the picture does not spin. The plaza is always one key away.
+- Panning is limited to the village area, and the camera can zoom out to 260 m.
+- Selection works across the whole village:
+  - clicking a building with residents opens their window (Gemini's explains it is planned);
+  - clicking a shared workplace or service slot opens its place card;
+  - lamp posts in the new districts can be selected and turned like the others.

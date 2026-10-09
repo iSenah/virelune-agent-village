@@ -147,6 +147,12 @@ export class VillageScene {
         this.camera.position.set(pos[0], pos[1], pos[2]);
         this.controls.target.set(target[0], target[1], target[2]);
       };
+      // Where a world point appears on screen (pixels), for scripted picking checks.
+      (window as any).__villageProject = (p: number[]) => {
+        const v = new THREE.Vector3(p[0], p[1], p[2]).project(this.camera);
+        const r = this.canvas.getBoundingClientRect();
+        return [r.left + ((v.x + 1) / 2) * r.width, r.top + ((1 - v.y) / 2) * r.height];
+      };
     }
     if (new URLSearchParams(location.search).has('stats')) this.setDiagnostics(true);
     this.renderer.setAnimationLoop(() => this.frame());
@@ -643,6 +649,26 @@ export class VillageScene {
     this.camTween = { from: this.camera.position.clone(), to: pos, tFrom: this.controls.target.clone(), tTo: door, start: performance.now() };
   }
 
+  /**
+   * Fly to a district: framed by its size, seen from the side the camera is already on (so the view does not
+   * spin). Founders' Square uses the classic view of the square.
+   */
+  focusDistrict(id: string) {
+    const d = this.world.districts.find((x) => x.id === id);
+    if (!d) return;
+    if (id === 'founders') {
+      this.camTween = { from: this.camera.position.clone(), to: new THREE.Vector3(0, 84, 98), tFrom: this.controls.target.clone(), tTo: new THREE.Vector3(0, 0, 1), start: performance.now() };
+      return;
+    }
+    const target = new THREE.Vector3(d.center[0], d.elevation, d.center[1]);
+    const dir = new THREE.Vector3().subVectors(this.camera.position, this.controls.target).setY(0);
+    if (dir.lengthSq() < 1) dir.set(0, 0, 1);
+    dir.normalize();
+    const dist = Math.max(60, d.radius * 3.6 + 20);
+    const pos = target.clone().add(dir.multiplyScalar(dist * 0.72)).add(new THREE.Vector3(0, dist * 0.7, 0));
+    this.camTween = { from: this.camera.position.clone(), to: pos, tFrom: this.controls.target.clone(), tTo: target, start: performance.now() };
+  }
+
   /** Back to the whole-village view. */
   overview() {
     this.camTween = { from: this.camera.position.clone(), to: OVERVIEW.pos.clone(), tFrom: this.controls.target.clone(), tTo: OVERVIEW.target.clone(), start: performance.now() };
@@ -653,6 +679,9 @@ export class VillageScene {
     const t = e.target as HTMLElement | null;
     if (t && /INPUT|TEXTAREA|SELECT/.test(t.tagName)) return;
     if (e.key === 'Home' || e.key === '0') this.overview();
+    // 1 to 5: the districts, in layout order (Founders' Square first)
+    const n = Number(e.key);
+    if (Number.isInteger(n) && n >= 1 && n <= this.world.districts.length && !e.ctrlKey && !e.metaKey && !e.altKey) this.focusDistrict(this.world.districts[n - 1].id);
     // Selected lamp post: [ and ] turn it 15° (hold Shift for 5°), Escape lets go.
     if (this.lamps.selected()) {
       const step = e.shiftKey ? 5 : 15;

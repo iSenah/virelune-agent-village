@@ -178,6 +178,12 @@ table.rw-profile .hint { margin: 2px 0 0; }
 .gfxmenu { position: absolute; right: 0; top: calc(100% + 8px); width: 320px; background: var(--panel); border: 1px solid var(--panel-edge); border-radius: var(--radius); padding: 10px 12px; z-index: 8; backdrop-filter: blur(6px); display: grid; gap: 6px; }
 .gfxmenu[hidden] { display: none; }
 .gfx-title { font: 600 14px var(--serif); color: var(--gold); }
+.gotomenu { width: 280px; max-height: calc(100vh - 120px); overflow: auto; gap: 2px; }
+.gotomenu button { display: block; width: 100%; text-align: left; background: none; border: 0; color: var(--ink); font: 13px var(--sans); padding: 5px 8px; border-radius: 8px; cursor: pointer; }
+.gotomenu button:hover, .gotomenu button:focus-visible { background: rgba(217, 164, 65, 0.15); }
+.gotomenu button.district { font: 600 13px var(--serif); color: var(--gold); margin-top: 4px; }
+.gotomenu button.building { padding-left: 20px; color: var(--muted); }
+.gotomenu .key { float: right; color: var(--muted); font-size: 11px; }
 .gfx-opt { display: grid; grid-template-columns: 18px 1fr; gap: 2px 8px; align-items: start; cursor: pointer; font-size: 13px; }
 .gfx-opt input { margin-top: 3px; }
 .gfx-opt .hint { display: block; margin: 1px 0 4px; }
