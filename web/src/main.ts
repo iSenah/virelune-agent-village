@@ -287,7 +287,8 @@ function alertLine(msg: string) {
 }
 
 function names(): Map<string, string> {
-  return new Map((store.state?.residents ?? []).map((r: any) => [r.id, r.displayName]));
+  // Profiles read as their own name (e.g. "Codex · Unreal") so tasks and events assigned to them are clear.
+  return new Map((store.state?.residents ?? []).flatMap((r: any) => [[r.id, r.displayName], ...(r.profiles ?? []).map((p: any) => [p.id, p.displayName])]));
 }
 
 function render() {
@@ -388,8 +389,10 @@ function renderResidents() {
       ]),
   );
   const sel = document.querySelector<HTMLSelectElement>('#taskForm select[name=assignee]')!;
-  if (sel.options.length !== s.residents.length + 1) {
-    sel.replaceChildren(el('option', { value: '' }, 'No assignee (Echo plans it)'), ...s.residents.map((r: any) => el('option', { value: r.id }, r.displayName)));
+  // Assign to a resident (works at home) or to one of its profiles (works at that profile's workplace).
+  const choices = s.residents.flatMap((r: any) => [[r.id, r.displayName], ...(r.profiles ?? []).map((p: any) => [p.id, `${p.displayName} (at ${world?.buildings.find((b) => b.id === p.workplace)?.place ?? p.workplace})`])]);
+  if (sel.options.length !== choices.length + 1) {
+    sel.replaceChildren(el('option', { value: '' }, 'No assignee (Echo plans it)'), ...choices.map(([id, label]: string[]) => el('option', { value: id }, label)));
   }
 }
 

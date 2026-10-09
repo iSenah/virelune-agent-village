@@ -35,7 +35,7 @@ export class Approvals {
     const now = new Date().toISOString();
     tx(this.db, () => {
       this.db.prepare('INSERT INTO approvals (id, kind, resident, task_id, summary, detail_json, risk, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(id, input.kind, input.resident ?? null, input.taskId ?? null, input.summary, JSON.stringify(input.detail ?? {}), input.risk, 'pending', now);
-      this.events.append({ type: 'approval.requested', actor: input.resident ?? 'system', taskId: input.taskId ?? null, payload: { approvalId: id, kind: input.kind, summary: input.summary, risk: input.risk } });
+      this.events.append({ type: 'approval.requested', actor: input.resident ?? 'system', taskId: input.taskId ?? null, payload: { approvalId: id, kind: input.kind, summary: input.summary, risk: input.risk, runId: typeof input.detail?.runId === 'string' ? input.detail.runId : null } });
     });
     return this.get(id)!;
   }

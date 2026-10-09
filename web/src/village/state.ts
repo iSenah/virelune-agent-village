@@ -105,6 +105,8 @@ export function describeEvent(e: EventLike, names: Map<string, string>): string 
       return p.kind === 'chat' ? `${who(e.actor)} is answering your message` : `${who(e.actor)} started work${e.taskId ? ` on task ${e.taskId}` : ''}`;
     case 'run.finished':
       return p.kind === 'chat' ? `${who(e.actor)} finished answering` : `${who(e.actor)} finished work${e.taskId ? ` on task ${e.taskId}` : ''}`;
+    case 'run.progress':
+      return `${who(e.actor)}: ${p.done} of ${p.total}${p.label ? ` ${p.label}` : ''}`;
     case 'run.failed':
       return `${who(e.actor)} could not finish: ${p.error}`;
     case 'run.interrupted':

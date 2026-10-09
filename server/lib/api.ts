@@ -1,5 +1,6 @@
 // HTTP API: REST commands, a Server-Sent Events stream of the event log, the Tool Gateway endpoint,
 // and the static web app. Loopback only. State-changing browser requests must come from the village itself.
+import { placeOf } from './activity.ts';
 import fs from 'node:fs';
 import http from 'node:http';
 import { stripTypeScriptTypes } from 'node:module';
@@ -62,8 +63,10 @@ export function createServer(village: Village): http.Server {
       platform: village.config.platform,
       lastSeq: village.events.lastSeq(),
       residents: village.residents(),
-      tasks: village.tasks.list(),
+      // Each task says which resident it belongs to and where its work happens (a profile's workplace, or home).
+      tasks: village.tasks.list().map((t) => ({ ...t, place: t.assignee ? placeOf(village.registries, t.assignee) : null })),
       approvals: village.approvals.list('pending'),
+      activity: village.activity.snapshot(),
       echo: { autonomy: village.settings.echoAutonomy(), levels: AUTONOMY_LEVELS },
       doctor: { running: village.doctorRunning, results: village.doctorLatest() },
       registry: {

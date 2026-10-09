@@ -1,6 +1,7 @@
 // Composition root: wires the database, event log, registries, task engine, approvals, settings and gateway.
 import type { IntegrationResult } from '../../integrations/types.ts';
 import path from 'node:path';
+import { ActivityTracker } from './activity.ts';
 import { Approvals } from './approvals.ts';
 import { BillingGuard } from './billing.ts';
 import { ChatService, type AgentAdapter } from './chat.ts';
@@ -24,6 +25,8 @@ export class Village {
   readonly tasks: TaskEngine;
   readonly gateway: ToolGateway;
   readonly chat: ChatService;
+  /** Who is doing what right now, and where (from live events since startup). */
+  readonly activity: ActivityTracker;
   /** Paid API safeguards: per-resident "Allow paid use", off by default. */
   readonly billing: BillingGuard;
   /** Runtime adapters by runtime kind. Only real adapters are ever registered; none means nobody can answer. */
@@ -40,13 +43,17 @@ export class Village {
     this.db = openDb(config.dbPath);
     this.events = new EventLog(this.db);
     this.registries = opts.registries ?? loadRegistries(config.configDir);
+    this.activity = new ActivityTracker(() => this.registries);
+    this.activity.attach(this.events);
     this.world = loadWorld(config.configDir, this.registries);
     this.approvals = new Approvals(this.db, this.events);
     this.settings = new Settings(this.db, this.events);
     this.billing = new BillingGuard(this.db, this.events, () => this.registries);
     this.doctorResults = latestDoctorResults(this.events, config.machineName);
     this.tasks = new TaskEngine(this.db, this.events, (id) => {
-      const v = this.residents().find((r) => r.id === id);
+      // A task may be assigned to an execution profile (e.g. codex-unreal): it is ready when its resident is.
+      const owner = this.registries.principals?.get(id)?.parent ?? id;
+      const v = this.residents().find((r) => r.id === owner);
       if (!v) return { known: false, ready: false, reason: 'unknown resident' };
       if (v.status === 'connected') return { known: true, ready: true, reason: '' };
       return { known: true, ready: false, reason: `${v.displayName} is ${v.status === 'untested' ? 'not checked yet' : 'disconnected'}: ${v.reasons[0] ?? ''}`.trim() };
@@ -144,6 +151,7 @@ export class Village {
       }
     }
     this.gateway.close();
+    this.activity.detach();
     this.db.close();
   }
 }
