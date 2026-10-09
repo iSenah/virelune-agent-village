@@ -75,15 +75,16 @@ test('grantFor: default deny, exec always asks, unclassified never exposed', () 
   assert.equal(grantFor(none, server, 'r'), 'deny');
 });
 
-test('village figures: Unreal combos stay registered without figures; Blender House keeps both', () => {
+test('village homes: each resident lives where the village says, and every figure is shown', () => {
   const reg = loadRegistries(path.join(PROJECT_ROOT, 'config'));
-  for (const id of ['codex-unreal', 'claude-unreal']) {
-    assert.ok(reg.residents.has(id), `${id} must stay registered`);
-    assert.equal(reg.residents.get(id)!.appearance.figure, false, `${id} has no village figure`);
-  }
-  const atWorkshop = [...reg.residents.values()].filter((r) => r.building === 'unreal-workshop' && r.appearance.figure);
-  assert.deepEqual(atWorkshop.map((r) => r.id), ['aura']);
-  const atBlender = [...reg.residents.values()].filter((r) => r.building === 'blender-house' && r.appearance.figure).map((r) => r.id).sort();
-  assert.deepEqual(atBlender, ['claude-blender', 'codex-blender']);
+  const at = (b: string) => [...reg.residents.values()].filter((r) => r.building === b).map((r) => r.id).sort();
+  assert.deepEqual(at('town-hall'), ['echo']);
+  assert.deepEqual(at('library'), ['claude']);
+  assert.deepEqual(at('engineering-forge'), ['codex']);
+  assert.deepEqual(at('unreal-workshop'), ['aura'], 'Aura has the Unreal Workshop to herself');
+  assert.deepEqual(at('unreal-studio'), ['claude-unreal', 'codex-unreal'], 'the UE Studio is home to Codex · Unreal and Claude · Unreal');
+  assert.deepEqual(at('blender-house'), ['claude-blender', 'codex-blender']);
+  assert.deepEqual(at('post-office'), ['scribe']);
+  for (const r of reg.residents.values()) assert.notEqual(r.appearance.figure, false, `${r.id} should have a village figure`);
   assert.equal(parseResident({ ...base, appearance: { lineage: 'codex', color: '#e8890c', figure: 'no' } }).errors.some((e) => e.includes('figure')), true);
 });

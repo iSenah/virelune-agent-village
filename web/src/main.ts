@@ -1,7 +1,8 @@
 // Virelune Agent Village web app: the control panel and the 3D village, both reading the same live state.
 import { api, Store } from './store.ts';
+import { BUILDINGS } from './village/buildings.ts';
 import { deriveActivity, deriveVisuals, describeEvent } from './village/state.ts';
-import type { VillageScene } from './village/scene.ts';
+import type { LampInfo, VillageScene } from './village/scene.ts';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector(sel) as T;
 
@@ -40,6 +41,7 @@ async function boot() {
       if (s.building) scene!.focusBuilding(s.building);
       renderDetail();
     };
+    wireLamps(scene);
   } catch (e) {
     // The control panel keeps working even if 3D cannot start (old GPU, WebGL disabled).
     $('#truth').textContent = `The 3D village could not start (${(e as Error).message}). The control panel still works.`;
@@ -96,6 +98,52 @@ function wireControls() {
   });
 }
 
+/** Lamp posts: click one in the village to select it, then turn it. Rotations are saved to the shared layout. */
+function wireLamps(sc: VillageScene) {
+  api('GET', '/api/layout')
+    .then((layout) => sc.applyLayout(layout))
+    .catch(() => {}); // defaults stay
+  const timers = new Map<string, number>();
+  sc.onLampRotate = (id, rotation) => {
+    clearTimeout(timers.get(id));
+    // save shortly after the last turn, so clicking several times sends one request
+    timers.set(id, window.setTimeout(() => {
+      timers.delete(id);
+      api('PUT', `/api/layout/lamps/${encodeURIComponent(id)}`, { rotation }).catch((e) => alertLine(`Could not save the lamp rotation: ${(e as Error).message}`));
+    }, 400));
+  };
+  sc.onLampSelect = (info) => renderLampTool(sc, info);
+}
+
+function renderLampTool(sc: VillageScene, info: LampInfo | null) {
+  const box = $('#lamptool');
+  if (!info) {
+    box.hidden = true;
+    return;
+  }
+  box.hidden = false;
+  const turn = (d: number, label: string, title: string) => el('button', { class: 'btn ghost', type: 'button', title, onclick: () => sc.rotateSelectedLamp(d) }, label);
+  box.replaceChildren(
+    el('div', { class: 'lt-head' },
+      el('strong', {}, 'Lamp post'),
+      el('span', { class: 'muted' }, ` · ${info.label}`),
+      el('button', { class: 'close', type: 'button', 'aria-label': 'Done', onclick: () => sc.selectLamp(null) }, '×'),
+    ),
+    el('div', { class: 'lt-row' },
+      turn(-45, '⟲ 45°', 'Turn left 45°'),
+      turn(-15, '⟲ 15°', 'Turn left 15° ([ key, Shift for 5°)'),
+      el("span", { class: "lt-angle" }, `${Math.round((360 - info.rotation) % 360)}°`),
+      turn(15, '15° ⟳', 'Turn right 15° (] key, Shift for 5°)'),
+      turn(45, '45° ⟳', 'Turn right 45°'),
+    ),
+    el('div', { class: 'lt-row' },
+      el('button', { class: 'btn ghost', type: 'button', disabled: !info.custom, onclick: () => sc.resetSelectedLamp() }, 'Reset'),
+      el('button', { class: 'btn primary', type: 'button', onclick: () => sc.selectLamp(null) }, 'Done'),
+    ),
+    el('div', { class: 'hint' }, '[ and ] turn it (Shift for 5°), Esc to finish. Saved to the village layout, so it is the same on every machine after a git pull.'),
+  );
+}
+
 function alertLine(msg: string) {
   $('#truth').textContent = msg;
 }
@@ -150,16 +198,32 @@ function renderAutonomy() {
 function renderResidents() {
   const s = store.state!;
   const list = $('#residents');
-  const order = { connected: 0, untested: 1, disconnected: 2 } as Record<string, number>;
-  const rs = [...s.residents].sort((a, b) => Number(b.focus) - Number(a.focus) || order[a.status] - order[b.status]);
+  // Grouped by where each resident lives, in village order (Town Hall first).
+  const known = new Set(BUILDINGS.map((b) => b.id));
+  const groups: { id: string; name: string; rs: any[] }[] = BUILDINGS.map((b) => ({ id: b.id, name: b.place, rs: s.residents.filter((r: any) => r.building === b.id) }));
+  const elsewhere = s.residents.filter((r: any) => !known.has(r.building));
+  if (elsewhere.length) groups.push({ id: '', name: 'Elsewhere', rs: elsewhere });
+  const pick = (building: string, resident?: string) => {
+    selected = { building, resident };
+    if (building) scene?.focusBuilding(building);
+    renderDetail();
+    render();
+  };
   list.replaceChildren(
-    ...rs.map((r) =>
-      el('li', { class: selected?.resident === r.id ? 'selected' : '', onclick: () => { selected = { building: r.building, resident: r.id }; scene?.focusBuilding(r.building); renderDetail(); render(); } },
-        el('span', { class: `dot ${r.status}` }),
-        el('span', { class: 'name' }, r.displayName, r.focus ? el('span', { class: 'tag' }, 'focus') : null),
-        el('span', { class: 'why' }, r.status === 'connected' ? 'Connected: integration checks passed' : r.reasons[0] ?? ''),
-      ),
-    ),
+    ...groups
+      .filter((g) => g.rs.length)
+      .flatMap((g) => [
+        el('li', { class: `group${selected?.building === g.id && !selected?.resident ? ' selected' : ''}`, onclick: () => g.id && pick(g.id) }, g.name),
+        ...[...g.rs]
+          .sort((a, b) => Number(b.focus) - Number(a.focus) || a.displayName.localeCompare(b.displayName))
+          .map((r) =>
+            el('li', { class: selected?.resident === r.id ? 'selected' : '', onclick: () => pick(r.building, r.id) },
+              el('span', { class: `dot ${r.status}` }),
+              el('span', { class: 'name' }, r.displayName, r.focus ? el('span', { class: 'tag' }, 'focus') : null),
+              el('span', { class: 'why' }, r.status === 'connected' ? 'Connected: integration checks passed' : r.reasons[0] ?? ''),
+            ),
+          ),
+      ]),
   );
   const sel = document.querySelector<HTMLSelectElement>('#taskForm select[name=assignee]')!;
   if (sel.options.length !== s.residents.length + 1) {

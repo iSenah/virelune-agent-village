@@ -9,11 +9,10 @@
   "runtime": "codex-app-server",
   "provider": "chatgpt-plan",
   "model": null,
-  "building": "unreal-workshop",
+  "building": "unreal-studio",
   "appearance": {
     "lineage": "codex",
-    "color": "#e8890c",
-    "figure": false
+    "color": "#e8890c"
   },
   "requires": [
     "codex",

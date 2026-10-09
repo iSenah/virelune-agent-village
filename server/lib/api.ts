@@ -5,6 +5,7 @@ import http from 'node:http';
 import { stripTypeScriptTypes } from 'node:module';
 import path from 'node:path';
 import type { Village } from './app.ts';
+import { LayoutError, LayoutStore } from './layout.ts';
 import { AUTONOMY_LEVELS } from './settings.ts';
 
 type Handler = (req: http.IncomingMessage, res: http.ServerResponse, params: Record<string, string>, url: URL) => Promise<void> | void;
@@ -118,6 +119,18 @@ export function createServer(village: Village): http.Server {
   route('PUT', '/api/settings/echo-autonomy', async (req, res) => {
     const b = await readJson(req);
     send(res, 200, { autonomy: village.settings.setEchoAutonomy(String(b.level ?? ''), 'human') });
+  });
+  // Village layout (cosmetic only: lamp-post rotations). Shared through git, not machine-specific.
+  const layout = new LayoutStore(village.config.layoutFile);
+  route('GET', '/api/layout', (_q, res) => send(res, 200, layout.read()));
+  route('PUT', '/api/layout/lamps/:id', async (req, res, p) => {
+    const b = await readJson(req);
+    try {
+      send(res, 200, layout.setLampRotation(decodeURIComponent(p.id), b.rotation === null ? null : b.rotation));
+    } catch (e) {
+      if (e instanceof LayoutError) throw new HttpError(400, e.message);
+      throw e;
+    }
   });
   route('POST', '/api/doctor/run', async (req, res) => {
     const b = await readJson(req);

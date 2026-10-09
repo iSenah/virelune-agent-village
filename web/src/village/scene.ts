@@ -3,13 +3,17 @@
 import { OrbitControls } from '../../vendor/OrbitControls.js';
 import { RoomEnvironment } from '../../vendor/RoomEnvironment.js';
 import * as THREE from '../../vendor/three.module.js';
-import { attachBuildingModel, BUILDINGS, buildBuilding, drawSign, type BuildingHandle } from './buildings.ts';
+import { attachBuildingModel, BUILDINGS, buildBuilding, drawSign, plinthLampSpots, type BuildingHandle } from './buildings.ts';
 import { applyCharacterStatus, attachCharacterModel, buildCharacter } from './characters.ts';
-import { instantiate, loadManifest, modelMaterials, type ModelManifest } from './models.ts';
-import { lantern, PALETTE, plaza, road } from './kit.ts';
+import { buildHub, fenceAlong, PLAZA_R, type Hub } from './hub.ts';
+import { plaza, road } from './kit.ts';
+import { LampSet, lanternToward, type LampSpot } from './lamps.ts';
+import { instantiate, loadManifest, loadShared, modelMaterials, type ModelManifest } from './models.ts';
 import { grassGround, landscape, type Keepout } from './nature.ts';
 import type { BuildingVisual, ResidentLike, ResidentVisual } from './state.ts';
 
+
+export type LampInfo = { id: string; label: string; rotation: number; custom: boolean };
 
 type Figure = { group: THREE.Group; resident: ResidentLike; home: THREE.Vector3; target: THREE.Vector3; pose: ResidentVisual['pose']; phase: number };
 
@@ -33,6 +37,12 @@ export class VillageScene {
   private shadowDirty = true;
   private lastStatus = new Map<string, ResidentLike['status']>();
   onSelect: (sel: { building?: string; resident?: string }) => void = () => {};
+  /** A lamp post was selected (or deselected with null). */
+  onLampSelect: (info: LampInfo | null) => void = () => {};
+  /** A lamp post was rotated (degrees) or reset to its default (null); the caller saves it to the layout. */
+  onLampRotate: (id: string, rotation: number | null) => void = () => {};
+  private lamps!: LampSet;
+  private hub!: Hub;
   private stats: HTMLElement | null = null;
   private pendingHover: PointerEvent | null = null;
   private downAt: { x: number; y: number } | null = null;
@@ -65,7 +75,7 @@ export class VillageScene {
     this.scene.environmentIntensity = 0.45;
     pmrem.dispose();
     this.camera = new THREE.PerspectiveCamera(30, 1, 0.5, 400);
-    this.camera.position.set(0, 70, 82);
+    this.camera.position.set(0, 84, 98);
     this.controls = new OrbitControls(this.camera, canvas);
     this.controls.target.set(0, 0, 1);
     // Snappier feel: less drift after letting go, faster zoom, panning across the ground plane.
@@ -76,7 +86,7 @@ export class VillageScene {
     this.controls.panSpeed = 1.1;
     this.controls.screenSpacePanning = false;
     this.controls.minDistance = 14;
-    this.controls.maxDistance = 130;
+    this.controls.maxDistance = 150;
     this.controls.maxPolarAngle = Math.PI * 0.43;
     this.hemi = new THREE.HemisphereLight(0xffe7c8, 0x3a2f28, 1.0);
     this.scene.add(this.hemi);
@@ -124,26 +134,40 @@ export class VillageScene {
 
   private buildWorld() {
     this.scene.add(grassGround(170));
-    this.scene.add(plaza(5.6));
-    const keepout: Keepout = { circles: [{ x: 0, z: 0, r: 8 }], segments: [] };
+    this.scene.add(plaza(PLAZA_R));
+    const keepout: Keepout = { circles: [{ x: 0, z: 0, r: PLAZA_R + 2.8 }], segments: [] };
+    const spots: LampSpot[] = [];
+    const roadAngles: number[] = [];
+    const fences: { a: THREE.Vector2; b: THREE.Vector2; offset: number }[] = [];
     BUILDINGS.forEach((def, i) => {
       // road from the plaza edge to the building's front steps
       const front = new THREE.Vector3(0, 0, def.d / 2 + 2.4).applyAxisAngle(new THREE.Vector3(0, 1, 0), def.rotY).add(new THREE.Vector3(def.x, 0, def.z));
-      const dir = new THREE.Vector2(front.x, front.z).normalize();
-      const start = dir.clone().multiplyScalar(5.9);
-      this.scene.add(road(start, new THREE.Vector2(front.x, front.z), 2.6, 100 + i));
-      keepout.segments.push({ a: start.clone(), b: new THREE.Vector2(front.x, front.z), r: 2.4 });
+      const end = new THREE.Vector2(front.x, front.z);
+      const dir = end.clone().normalize();
+      const start = dir.clone().multiplyScalar(PLAZA_R + 0.3);
+      this.scene.add(road(start, end, 2.6, 100 + i));
+      roadAngles.push(Math.atan2(dir.y, dir.x));
+      keepout.segments.push({ a: start.clone(), b: end.clone(), r: 2.6 });
       keepout.circles.push({ x: def.x, z: def.z, r: Math.hypot(def.w, def.d) / 2 + 1.6 });
-      const mid = start.clone().lerp(new THREE.Vector2(front.x, front.z), 0.5);
-      const side = new THREE.Vector2(-dir.y, dir.x).multiplyScalar(2.0);
+      // lamp posts flanking the road where it leaves the plaza, lanterns hanging over the road
+      const right = new THREE.Vector2(-dir.y, dir.x);
+      const at = dir.clone().multiplyScalar(PLAZA_R + 2.5);
       for (const s of [1, -1]) {
-        const l = lantern();
-        l.position.set(mid.x + side.x * s, 0.3, mid.y + side.y * s);
-        this.scene.add(l);
+        const off = right.clone().multiplyScalar(2.35 * s);
+        const p = at.clone().add(off);
+        spots.push({ id: `road:${def.id}:${s > 0 ? 'right' : 'left'}`, label: `Road to ${def.place}, ${s > 0 ? 'right' : 'left'}`, x: p.x, y: 0, z: p.y, rotY: lanternToward(-off.x, -off.y) });
       }
+      fences.push({ a: dir.clone().multiplyScalar(PLAZA_R + 3.9), b: end.clone().sub(dir.clone().multiplyScalar(0.8)), offset: 2.1 });
       const b = buildBuilding(def);
       this.buildings.set(def.id, b);
       this.scene.add(b.group);
+      // lamp posts on the plinth, either side of the front steps
+      b.group.updateMatrixWorld(true);
+      const steps = b.group.localToWorld(new THREE.Vector3(0, 0, def.d / 2 + 1.2));
+      for (const spot of plinthLampSpots(def)) {
+        const w = b.group.localToWorld(spot.local.clone());
+        spots.push({ id: `plinth:${def.id}:${spot.side}`, label: `${def.place}, ${spot.side} lamp`, x: w.x, y: w.y, z: w.z, rotY: lanternToward(steps.x - w.x, steps.z - w.z) });
+      }
       // Cheap invisible box for picking (testing the detailed models' triangles on every mouse move is very slow).
       const proxy = new THREE.Mesh(new THREE.BoxGeometry(def.w + 1.2, 9, def.d + 1.2), this.proxyMat);
       proxy.position.y = 4.5;
@@ -151,14 +175,66 @@ export class VillageScene {
       b.group.add(proxy);
       this.pickProxies.push(proxy);
     });
+    this.scene.add(fenceAlong(fences));
+    this.hub = buildHub(roadAngles);
+    this.scene.add(this.hub.group);
+    spots.push(...this.hub.lampSpots);
+    keepout.segments.push(...this.hub.segments);
+    keepout.custom = this.hub.blocked;
+    for (const sp of spots) keepout.circles.push({ x: sp.x, z: sp.z, r: 1.1 });
+    this.lamps = new LampSet(spots);
+    this.lamps.onDirty = () => (this.shadowDirty = true);
+    this.scene.add(this.lamps.group);
+    this.pickProxies.push(...this.lamps.proxies);
     this.scene.add(landscape(keepout));
     this.loadBuildingModels();
+  }
+
+  /** Apply saved lamp rotations from the shared village layout. */
+  applyLayout(layout: { lamps?: Record<string, { rotation: number }> }) {
+    this.lamps.setOverrides(layout.lamps ?? {});
+    this.emitLamp();
+  }
+
+  private emitLamp() {
+    const id = this.lamps.selected();
+    this.onLampSelect(id ? { id, label: this.lamps.label(id), rotation: this.lamps.rotation(id), custom: this.lamps.isCustom(id) } : null);
+  }
+
+  selectLamp(id: string | null) {
+    if (id === this.lamps.selected()) return;
+    this.lamps.select(id);
+    this.emitLamp();
+  }
+
+  /** Rotate the selected lamp post by some degrees (positive = clockwise seen from above). */
+  rotateSelectedLamp(deltaDeg: number) {
+    const id = this.lamps.selected();
+    if (!id) return;
+    // three.js turns counter-clockwise for positive angles when seen from above
+    const rot = this.lamps.rotateBy(id, -deltaDeg);
+    this.onLampRotate(id, rot);
+    this.emitLamp();
+  }
+
+  resetSelectedLamp() {
+    const id = this.lamps.selected();
+    if (!id) return;
+    this.lamps.reset(id);
+    this.onLampRotate(id, null);
+    this.emitLamp();
   }
 
   /** Replace procedural bodies with custom models. On any failure the procedural body simply stays. */
   private async loadBuildingModels() {
     const manifest = await this.manifest;
     if (!manifest) return;
+    const lamp = manifest.props?.['street-lamp'];
+    if (lamp) {
+      loadShared('street-lamp', lamp)
+        .then((src) => this.lamps.attachModel(src, lamp.height ?? 3.3))
+        .catch(() => {}); // the procedural lanterns stay
+    }
     for (const [id, b] of this.buildings) {
       const entry = manifest.buildings[id];
       if (!entry) continue;
@@ -198,6 +274,7 @@ export class VillageScene {
     this.ambient.intensity = night ? 0.45 : 0.7;
     this.sun.intensity = night ? 1.5 : 2.6;
     this.sun.color.set(night ? 0xffd9b0 : 0xfff2dc);
+    this.hub?.setNight(night);
     this.applyBuildingVisuals();
   }
 
@@ -288,7 +365,17 @@ export class VillageScene {
     this.raycaster.setFromCamera(this.pointer, this.camera);
     const hits = this.raycaster.intersectObjects(this.pickProxies, false);
     // Residents stand in front of their buildings: prefer a resident if one was hit.
-    const hit = hits.find((h) => h.object.userData.residentId) ?? hits[0];
+    const residentHit = hits.find((h) => h.object.userData.residentId);
+    // Plinth lamps stand inside their building's pick box, so a lamp wins if it is hit close behind the box face.
+    const lampHit = hits.find((h) => h.object.userData.lampId);
+    if (!residentHit && lampHit && lampHit.distance - hits[0].distance < 3.5) {
+      this.canvas.style.cursor = 'pointer';
+      this.hovered = `lamp:${lampHit.object.userData.lampId}`;
+      if (click) this.selectLamp(lampHit.object.userData.lampId);
+      return;
+    }
+    if (click) this.selectLamp(null);
+    const hit = residentHit ?? hits.find((h) => !h.object.userData.lampId);
     let resident: string | undefined;
     let building: string | undefined;
     for (let o: THREE.Object3D | null = hit?.object ?? null; o; o = o.parent) {
@@ -316,7 +403,7 @@ export class VillageScene {
 
   /** Back to the whole-village view. */
   overview() {
-    this.camTween = { from: this.camera.position.clone(), to: new THREE.Vector3(0, 70, 82), tFrom: this.controls.target.clone(), tTo: new THREE.Vector3(0, 0, 1), start: performance.now() };
+    this.camTween = { from: this.camera.position.clone(), to: new THREE.Vector3(0, 84, 98), tFrom: this.controls.target.clone(), tTo: new THREE.Vector3(0, 0, 1), start: performance.now() };
   }
 
   /** Keyboard: WASD / arrows pan, Q / E turn, + / - zoom, Home or 0 returns to the overview. */
@@ -324,6 +411,13 @@ export class VillageScene {
     const t = e.target as HTMLElement | null;
     if (t && /INPUT|TEXTAREA|SELECT/.test(t.tagName)) return;
     if (e.key === 'Home' || e.key === '0') this.overview();
+    // Selected lamp post: [ and ] turn it 15° (hold Shift for 5°), Escape lets go.
+    if (this.lamps.selected()) {
+      const step = e.shiftKey ? 5 : 15;
+      if (e.key === '[' || e.key === '{') this.rotateSelectedLamp(-step);
+      if (e.key === ']' || e.key === '}') this.rotateSelectedLamp(step);
+      if (e.key === 'Escape') this.selectLamp(null);
+    }
   }
 
   private keyboardMove(dt: number) {
@@ -359,7 +453,7 @@ export class VillageScene {
     }
     // keep the view over the village
     const tgt = this.controls.target;
-    const lim = 45;
+    const lim = 60;
     const clamped = new THREE.Vector3(THREE.MathUtils.clamp(tgt.x, -lim, lim), tgt.y, THREE.MathUtils.clamp(tgt.z, -lim, lim));
     this.camera.position.add(clamped.clone().sub(tgt));
     tgt.copy(clamped);
@@ -409,6 +503,7 @@ export class VillageScene {
     }
     this.controls.update();
     // ---- ambient (not tied to agent activity) ----
+    this.hub.update(t);
     const hall = this.buildings.get('town-hall');
     if (hall?.group.userData.flag) hall.group.userData.flag.rotation.y = Math.sin(t * 1.7) * 0.18;
     const now = new Date();

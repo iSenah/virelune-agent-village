@@ -14,6 +14,8 @@ export type VillageConfig = {
   dbPath: string;
   configDir: string;
   webDir: string;
+  /** Shared village layout (e.g. lamp rotations). Lives in the repo so every machine gets the same village. */
+  layoutFile: string;
   machineName: string;
   platform: NodeJS.Platform;
   env: Record<string, string | undefined>;
@@ -61,6 +63,7 @@ export function loadConfig(overrides: Partial<VillageConfig> = {}, root = PROJEC
     dbPath: overrides.dbPath ?? path.join(dataDir, 'village.db'),
     configDir: overrides.configDir ?? path.join(root, 'config'),
     webDir: overrides.webDir ?? path.join(root, 'web'),
+    layoutFile: overrides.layoutFile ?? path.join(overrides.configDir ?? path.join(root, 'config'), 'layout', 'village.json'),
     machineName: overrides.machineName ?? (env.VILLAGE_MACHINE_NAME || os.hostname()),
     platform: process.platform,
     env,

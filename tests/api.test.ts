@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import type http from 'node:http';
 import { after, before, test } from 'node:test';
 import { createServer } from '../server/lib/api.ts';
@@ -109,4 +110,20 @@ test('the web app is served; TypeScript is served as JavaScript; no path travers
     const r = await fetch(`${base}${p}`);
     assert.ok([403, 404].includes(r.status), `${p} -> ${r.status}`);
   }
+});
+
+test('village layout: lamp rotations are validated, saved to the layout file, and resettable', async () => {
+  assert.deepEqual((await (await fetch(`${base}/api/layout`)).json()).lamps, {});
+  const put = (id: string, body: unknown, headers: Record<string, string> = H) => fetch(`${base}/api/layout/lamps/${encodeURIComponent(id)}`, { method: 'PUT', headers, body: JSON.stringify(body) });
+  assert.equal((await put('road:library:left', { rotation: 90 }, { 'content-type': 'application/json' })).status, 403, 'needs the village header');
+  assert.equal((await put('road:library:left', { rotation: 90 }, { ...H, origin: 'https://evil.example' })).status, 403, 'refuses other websites');
+  assert.equal((await put('../../etc', { rotation: 90 })).status, 400);
+  assert.equal((await put('road:library:left', { rotation: 'north' })).status, 400);
+  assert.equal((await put('road:library:left', { rotation: -30 })).status, 200);
+  const saved = await (await fetch(`${base}/api/layout`)).json();
+  assert.deepEqual(saved.lamps, { 'road:library:left': { rotation: 330 } });
+  const file = JSON.parse(fs.readFileSync(village.config.layoutFile, 'utf8'));
+  assert.deepEqual(file.lamps, saved.lamps, 'written to the layout file (the test uses a temp file, never the repo)');
+  assert.equal((await put('road:library:left', { rotation: null })).status, 200);
+  assert.deepEqual((await (await fetch(`${base}/api/layout`)).json()).lamps, {});
 });

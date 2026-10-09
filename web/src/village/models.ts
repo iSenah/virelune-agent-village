@@ -5,7 +5,7 @@ import { GLTFLoader } from '../../vendor/GLTFLoader.js';
 import * as THREE from '../../vendor/three.module.js';
 
 export type ModelEntry = { file: string; source?: string; width?: number; height?: number; rotateY?: number };
-export type ModelManifest = { version: number; buildings: Record<string, ModelEntry>; characters: Record<string, ModelEntry> };
+export type ModelManifest = { version: number; buildings: Record<string, ModelEntry>; characters: Record<string, ModelEntry>; props?: Record<string, ModelEntry> };
 
 export type ModelStatus = { total: number; loaded: number; failed: { key: string; file: string; error: string }[] };
 
@@ -75,6 +75,23 @@ export async function instantiate(key: string, entry: ModelEntry): Promise<THREE
     modelStatus.loaded += 1;
     emitStatus();
     return wrapper;
+  } catch (e) {
+    modelStatus.failed.push({ key, file: entry.file, error: (e as Error)?.message ?? String(e) });
+    emitStatus();
+    console.warn(`[Virelune] Model "${key}" (${entry.file}) failed to load; keeping the placeholder.`, e);
+    throw e;
+  }
+}
+
+/** Load a model as-is (shared, not cloned), e.g. a prop that the caller instances many times. */
+export async function loadShared(key: string, entry: ModelEntry): Promise<THREE.Group> {
+  modelStatus.total += 1;
+  emitStatus();
+  try {
+    const source = await fetchModel(entry.file);
+    modelStatus.loaded += 1;
+    emitStatus();
+    return source;
   } catch (e) {
     modelStatus.failed.push({ key, file: entry.file, error: (e as Error)?.message ?? String(e) });
     emitStatus();

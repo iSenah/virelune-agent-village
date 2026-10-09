@@ -1,20 +1,30 @@
-// The six village buildings, signboards and resident figures.
+// The seven village buildings, signboards and resident figures.
 import * as THREE from '../../vendor/three.module.js';
-import { house, lantern, mat, mesh, PALETTE, plinth, steps, tower } from './kit.ts';
+import { house, mat, mesh, PALETTE, plinth, steps, tower } from './kit.ts';
 
-export type BuildingDef = { id: string; title: string; subtitle: string; tagline: string; x: number; z: number; rotY: number; w: number; d: number };
+/** title/subtitle/tagline are the signboard lines; place is the building's name in the resident list. */
+export type BuildingDef = { id: string; place: string; title: string; subtitle: string; tagline: string; x: number; z: number; rotY: number; w: number; d: number };
 
-// Layout follows the reference: Town Hall at the head of the plaza, two pairs of houses on the diagonals.
+// Layout follows the reference: Town Hall at the head of the plaza, houses in a ring facing the fountain.
 const facePlaza = (x: number, z: number) => Math.atan2(-x, -z);
-const B = (id: string, title: string, subtitle: string, tagline: string, x: number, z: number, w: number, d: number): BuildingDef => ({ id, title, subtitle, tagline, x, z, rotY: facePlaza(x, z), w, d });
+const B = (id: string, place: string, title: string, subtitle: string, tagline: string, x: number, z: number, w: number, d: number): BuildingDef => ({ id, place, title, subtitle, tagline, x, z, rotY: facePlaza(x, z), w, d });
 export const BUILDINGS: BuildingDef[] = [
-  B('town-hall', 'Echo', 'Town Hall', 'Coordinator · Mayor', 0, -16, 11, 8),
-  B('library', 'Claude', 'Library & Archives', 'Designer · Researcher', -18, -9, 9, 7.5),
-  B('unreal-workshop', 'Aura', 'Unreal Workshop', '3D · Environments', 18, -9, 9, 7.5),
-  B('engineering-forge', 'Codex', 'Engineering Forge', 'Developer · Automation', -17, 12, 9, 7.5),
-  B('blender-house', 'Blender House', '3D & Assets', 'Models · Textures', 17, 12, 9, 7.5),
-  B('post-office', 'Scribe', 'Post Office', 'Notes · Summaries', 0, 21, 7, 6),
+  B('town-hall', 'Town Hall', 'Echo', 'Town Hall', 'Coordinator · Mayor', 0, -18, 11, 8),
+  B('library', 'Library & Archives', 'Claude', 'Library & Archives', 'Designer · Researcher', -20, -10, 9, 7.5),
+  B('unreal-workshop', 'Unreal Workshop', 'Aura', 'Unreal Workshop', '3D · Environments', 20, -10, 9, 7.5),
+  B('engineering-forge', 'Engineering Forge', 'Codex', 'Engineering Forge', 'Developer · Automation', -19, 13.5, 9, 7.5),
+  B('blender-house', 'Blender House', 'Blender House', '3D & Assets', 'Models · Textures', 22, 9.5, 9, 7.5),
+  B('unreal-studio', 'UE Studio', 'UE Studio', 'Unreal Engine', 'Levels · Blueprints', 14.5, 26, 9, 7.5),
+  B('post-office', 'Post Office', 'Scribe', 'Post Office', 'Notes · Summaries', 0, 23.5, 7, 6),
 ];
+
+/** Where the two lamp posts flank a building's front (building-local coordinates, on the plinth top). */
+export function plinthLampSpots(def: BuildingDef): { side: 'left' | 'right'; local: THREE.Vector3 }[] {
+  return [
+    { side: 'left', local: new THREE.Vector3(-def.w / 2 + 0.7, 0.95, def.d / 2 - 0.3) },
+    { side: 'right', local: new THREE.Vector3(def.w / 2 - 0.7, 0.95, def.d / 2 - 0.3) },
+  ];
+}
 
 export type BuildingHandle = {
   def: BuildingDef;
@@ -176,10 +186,10 @@ export function buildBuilding(def: BuildingDef): BuildingHandle {
     }
     signY = 12.6;
   } else if (def.id === 'library') {
-    const h = house({ w: 6.2, d: 4.8, h: 3.4, roof: PALETTE.roofNavy, roofH: 2.8, windowsFront: 4 }, windowMat);
+    const h = house({ w: 6.2, d: 4.8, h: 3.4, roof: PALETTE.roofOrange, roofH: 2.8, windowsFront: 4 }, windowMat);
     body.add(h);
     chimney = h.userData.chimneyTop ?? null;
-    const t = tower(0.8, 5.4, PALETTE.roofNavy, windowMat);
+    const t = tower(0.8, 5.4, PALETTE.roofOrange, windowMat);
     t.position.set(-3.3, 0.2, 1.4);
     body.add(t);
     const glow = mat(PALETTE.crystal, { emissive: PALETTE.crystal, emissiveIntensity: 0 });
@@ -215,7 +225,7 @@ export function buildBuilding(def: BuildingDef): BuildingHandle {
     body.add(mesh(new THREE.BoxGeometry(1.2, 0.8, 0.1), fire, 1.9, 1.0, 2.46, false));
     signY = 9.8;
   } else if (def.id === 'blender-house') {
-    const h = house({ w: 6.2, d: 4.8, h: 3.4, roof: PALETTE.roofOrange, roofH: 2.7, windowsFront: 4 }, windowMat);
+    const h = house({ w: 6.2, d: 4.8, h: 3.4, roof: PALETTE.roofNavy, roofH: 2.7, windowsFront: 4 }, windowMat);
     body.add(h);
     chimney = h.userData.chimneyTop ?? null;
     const annex = house({ w: 2.4, d: 3.2, h: 2.4, roof: PALETTE.roofBlue, roofH: 1.6, windowsFront: 1, chimney: false }, windowMat);
@@ -225,6 +235,14 @@ export function buildBuilding(def: BuildingDef): BuildingHandle {
     em.position.set(0, 4.55, 2.75);
     body.add(em);
     signY = 9.8;
+  } else if (def.id === 'unreal-studio') {
+    const h = house({ w: 6.6, d: 4.6, h: 3.2, roof: 0x34302e, roofH: 2.5, windowsFront: 4 }, windowMat);
+    body.add(h);
+    chimney = h.userData.chimneyTop ?? null;
+    const em = cubeEmblem();
+    em.position.set(0, 4.4, 2.6);
+    body.add(em);
+    signY = 9.6;
   } else {
     const h = house({ w: 4.6, d: 3.8, h: 2.8, roof: PALETTE.roofGreen, roofH: 2.0, windowsFront: 3 }, windowMat);
     body.add(h);
@@ -233,16 +251,11 @@ export function buildBuilding(def: BuildingDef): BuildingHandle {
     signY = 8.2;
   }
 
-  // front steps and lanterns (ambient)
+  // front steps (ambient). The lamp posts are placed by the scene's lamp set (see plinthLampSpots).
   const st = steps(2.4, 3);
   st.position.set(0, 0.05, def.d / 2 + 1.2);
   st.rotation.y = Math.PI;
   group.add(st);
-  for (const x of [-def.w / 2 + 0.6, def.w / 2 - 0.6]) {
-    const l = lantern();
-    l.position.set(x, 0.95, def.d / 2 - 0.2);
-    group.add(l);
-  }
   const light = new THREE.PointLight(0xffb866, 0, 12, 1.6);
   light.position.set(0, 3.2, 2.8);
   body.add(light);
@@ -264,7 +277,7 @@ export function buildBuilding(def: BuildingDef): BuildingHandle {
 }
 
 /**
- * Swap the procedural body for a loaded custom model. The plinth, steps, lanterns, sign, light and smoke stay,
+ * Swap the procedural body for a loaded custom model. The plinth, steps, sign, light and smoke stay,
  * so status indicators keep working. The model stands on the plinth top, front (+Z) toward the plaza.
  */
 export function attachBuildingModel(b: BuildingHandle, model: THREE.Group) {

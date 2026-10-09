@@ -5,18 +5,20 @@ Custom GLB models for Virelune Agent Village. `manifest.json` maps each building
 | Village id | File | Original export |
 | --- | --- | --- |
 | town-hall (Echo) | `buildings/town-hall.glb` | `Echo_Building.glb` |
-| library (Claude) | `buildings/library.glb` | `Blue_Building.glb` |
+| library (Claude) | `buildings/library.glb` | `Claude_Building.glb` |
 | engineering-forge (Codex) | `buildings/engineering-forge.glb` | `Codex_Building.glb` |
 | unreal-workshop (Aura) | `buildings/unreal-workshop.glb` | `Aura_Building.glb` |
-| blender-house | `buildings/blender-house.glb` | `Claude_Building.glb` (the orange-roofed model) |
+| blender-house (Codex · Blender, Claude · Blender) | `buildings/blender-house.glb` | `Blue_Building.glb` |
+| unreal-studio (Codex · Unreal, Claude · Unreal) | `buildings/unreal-studio.glb` | `Unreal_Building.glb` |
 | post-office (Scribe) | `buildings/post-office.glb` | `Scribe_Building.glb` |
 | echo, claude, codex, aura, scribe | `characters/<name>.glb` | `<Name>.glb` |
+| street-lamp (every lamp post) | `props/street-lamp.glb` | `Village_Street_Lamp.glb` |
 
 Combination residents (Codex · Blender, Claude · Unreal, ...) reuse their runtime's character model and carry a small specialty emblem.
 
 ## Browser versions
 
-These files are browser copies made with `scripts/optimize_glb.py`: textures resized from 2048 px to 1024 px and stored as JPEG. Geometry, UVs, normals and tangents are byte-for-byte identical to the export. That cuts GPU texture memory for the village from about 600 MB to about 150 MB. Keep the full-resolution originals in your art folder; they are not stored in this repo.
+These files are browser copies made with `scripts/optimize_glb.py`: textures resized from 2048 px to 1024 px and stored as JPEG, which cuts GPU texture memory for the village from about 600 MB to about 150 MB. Geometry, UVs, normals and tangents are byte-for-byte identical to the export, with one exception: the street lamp is repeated about 30 times, so it was also simplified from 80k to 12k triangles with [gltfpack](https://github.com/zeux/meshoptimizer) (`gltfpack -i Village_Street_Lamp.glb -o lamp.glb -si 0.08 -sp -se 0.03 -noq -kn -km`), which keeps its UVs and looks the same at village scale. All lamp posts share one instanced mesh. Keep the full-resolution originals in your art folder; they are not stored in this repo.
 
 ## Replacing or adding a model
 

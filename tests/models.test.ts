@@ -49,7 +49,7 @@ test('every building and resident lineage in the manifest is used by the registr
 test('each model file is a valid GLB with browser-sized textures', () => {
   let total = 0;
   for (const [group, entries] of Object.entries(manifest) as [string, any][]) {
-    if (group !== 'buildings' && group !== 'characters') continue;
+    if (group !== 'buildings' && group !== 'characters' && group !== 'props') continue;
     for (const [key, entry] of Object.entries(entries) as [string, any][]) {
       const file = path.join(MODELS, entry.file);
       assert.ok(fs.existsSync(file), `${key}: ${entry.file} is missing`);
@@ -67,6 +67,10 @@ test('each model file is a valid GLB with browser-sized textures', () => {
       assert.ok(tris <= 100_000, `${key}: ${tris} triangles exceeds the per-model budget`);
     }
   }
+  // The street lamp is repeated around the village (one instanced mesh), so it must stay light.
+  const lamp = readGlb(path.join(MODELS, manifest.props['street-lamp'].file)).json;
+  const lampTris = lamp.meshes.flatMap((m: any) => m.primitives).reduce((n: number, p: any) => n + lamp.accessors[p.indices].count / 3, 0);
+  assert.ok(lampTris <= 15_000, `street lamp has ${lampTris} triangles; keep it under 15k`);
   assert.ok(total < 80 * 1024 * 1024, `models total ${(total / 1048576).toFixed(1)} MB exceeds the 80 MB budget`);
 });
 

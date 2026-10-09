@@ -4,7 +4,7 @@ import { mergeGeometries } from '../../vendor/BufferGeometryUtils.js';
 import * as THREE from '../../vendor/three.module.js';
 import { rng } from './kit.ts';
 
-export type Keepout = { circles: { x: number; z: number; r: number }[]; segments: { a: THREE.Vector2; b: THREE.Vector2; r: number }[] };
+export type Keepout = { circles: { x: number; z: number; r: number }[]; segments: { a: THREE.Vector2; b: THREE.Vector2; r: number }[]; custom?: (x: number, z: number, pad: number) => boolean };
 
 let grassCanvas: HTMLCanvasElement | null = null;
 
@@ -74,6 +74,7 @@ export function grassGround(radius: number): THREE.Mesh {
 }
 
 function blocked(k: Keepout, x: number, z: number, pad = 0): boolean {
+  if (k.custom?.(x, z, pad)) return true;
   for (const c of k.circles) if ((x - c.x) ** 2 + (z - c.z) ** 2 < (c.r + pad) ** 2) return true;
   const p = new THREE.Vector2(x, z);
   for (const s of k.segments) {
@@ -131,16 +132,16 @@ const flat = (color: number, rough = 0.9) => {
 export function landscape(k: Keepout): THREE.Group {
   const g = new THREE.Group();
   // --- broadleaf trees: trunk + two foliage blobs
-  const trees = scatter(k, 70, 11, 30, 78, 3.2).concat(scatter(k, 10, 12, 14, 30, 3.5));
+  const trees = scatter(k, 55, 11, 30, 78, 3.2).concat(scatter(k, 12, 12, 14, 30, 3.5));
   g.add(instanced(new THREE.CylinderGeometry(0.22, 0.38, 2.4, 6), flat(0x6b4a2f), trees, (d) => (d.position.y = 1.2)));
   const foliage = mergeGeometries([new THREE.IcosahedronGeometry(1.7, 1).translate(0, 3.4, 0), new THREE.IcosahedronGeometry(1.25, 1).translate(0.8, 4.4, 0.3), new THREE.IcosahedronGeometry(1.1, 1).translate(-0.7, 4.1, -0.4)]);
   g.add(instanced(foliage, new THREE.MeshStandardMaterial({ roughness: 0.9, flatShading: true, color: 0xffffff }), trees, () => {}, (c, it) => c.setHSL(0.26 + it.v * 0.06, 0.5, 0.3 + it.v * 0.1, THREE.SRGBColorSpace)));
   // --- pines
-  const pines = scatter(k, 45, 21, 34, 82, 3);
+  const pines = scatter(k, 70, 21, 30, 82, 2.8).concat(scatter(k, 60, 22, 44, 86, 2.6));
   const pine = mergeGeometries([new THREE.CylinderGeometry(0.18, 0.25, 1.2, 5).translate(0, 0.6, 0), new THREE.ConeGeometry(1.5, 2.4, 7).translate(0, 2.2, 0), new THREE.ConeGeometry(1.15, 2.0, 7).translate(0, 3.4, 0), new THREE.ConeGeometry(0.75, 1.6, 7).translate(0, 4.5, 0)]);
   g.add(instanced(pine, new THREE.MeshStandardMaterial({ roughness: 0.9, flatShading: true, color: 0xffffff }), pines, (d, it) => d.scale.setScalar(it.s * 1.15), (c, it) => c.setHSL(0.36 + it.v * 0.04, 0.45, 0.22 + it.v * 0.07, THREE.SRGBColorSpace)));
   // --- bushes near lots and roads
-  const bushes = scatter(k, 90, 31, 8, 45, 1.2);
+  const bushes = scatter(k, 150, 31, 8, 48, 1.1);
   g.add(instanced(new THREE.IcosahedronGeometry(0.75, 1), new THREE.MeshStandardMaterial({ roughness: 0.95, flatShading: true, color: 0xffffff }), bushes, (d, it) => {
     d.position.y = 0.35;
     d.scale.set(it.s, it.s * 0.7, it.s);

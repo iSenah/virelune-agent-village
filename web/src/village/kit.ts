@@ -7,6 +7,8 @@ export const PALETTE = {
   stoneLight: 0xb9ab97,
   stone: 0x9d8f7d,
   stoneDark: 0x7c7166,
+  /** warm sandstone for the plaza and roads, as in the hub concept */
+  sand: 0xb59f80,
   wall: 0xeadcbc,
   timber: 0x6a4327,
   timberDark: 0x4a2e1b,
@@ -172,7 +174,7 @@ export function road(a: THREE.Vector2, b: THREE.Vector2, width: number, seed: nu
       d.scale.set(0.92 + r() * 0.25, 0.9 + r() * 0.25, 0.88 + r() * 0.25);
       d.updateMatrix();
       im.setMatrixAt(i, d.matrix);
-      stoneColor(col, r);
+      stoneColor(col, r, PALETTE.sand);
       im.setColorAt(i++, col);
     }
   }
@@ -199,7 +201,7 @@ export function plaza(radius: number): THREE.Group {
   g.add(mesh(new THREE.CylinderGeometry(radius + 0.4, radius + 0.4, 0.16, 48), mat(MORTAR), 0, 0.52, 0, false));
   const r = rng(7);
   const rings: number[] = [];
-  for (let rr = radius; rr > 2.7; rr -= 0.47) rings.push(rr);
+  for (let rr = radius; rr > 3.7; rr -= 0.47) rings.push(rr);
   const total = rings.reduce((n, rr) => n + Math.floor((2 * Math.PI * rr) / 0.46), 0);
   const im = cobbleMesh(total);
   const d = new THREE.Object3D();
@@ -215,7 +217,7 @@ export function plaza(radius: number): THREE.Group {
       d.scale.set(0.85 + r() * 0.25, 0.9 + r() * 0.2, 0.85 + r() * 0.2);
       d.updateMatrix();
       im.setMatrixAt(i, d.matrix);
-      stoneColor(col, r, PALETTE.stone);
+      stoneColor(col, r, PALETTE.sand);
       im.setColorAt(i++, col);
     }
   }
@@ -235,12 +237,13 @@ export function plaza(radius: number): THREE.Group {
   }
   curb.receiveShadow = true;
   g.add(curb);
-  // inlay: blue disc + gold ring + 8-point star
-  g.add(mesh(new THREE.CylinderGeometry(2.7, 2.7, 0.12, 48), mat(0x4b5a9c), 0, 0.64, 0, false));
-  g.add(mesh(new THREE.TorusGeometry(2.0, 0.07, 6, 48).rotateX(Math.PI / 2), mat(PALETTE.gold, { metal: 0.4, rough: 0.5 }), 0, 0.71, 0, false));
+  // inlay under the fountain: blue disc, gold rings and an 8-point star whose tips reach out from the basin
+  g.add(mesh(new THREE.CylinderGeometry(3.7, 3.7, 0.12, 48), mat(0x3f4f96), 0, 0.64, 0, false));
+  g.add(mesh(new THREE.TorusGeometry(3.55, 0.08, 6, 48).rotateX(Math.PI / 2), mat(PALETTE.gold, { metal: 0.4, rough: 0.5 }), 0, 0.71, 0, false));
+  g.add(mesh(new THREE.TorusGeometry(3.05, 0.05, 6, 48).rotateX(Math.PI / 2), mat(PALETTE.gold, { metal: 0.4, rough: 0.5 }), 0, 0.71, 0, false));
   const star = new THREE.Shape();
   for (let k = 0; k < 16; k++) {
-    const rad = k % 2 === 0 ? (k % 4 === 0 ? 1.9 : 1.15) : 0.38;
+    const rad = k % 2 === 0 ? (k % 4 === 0 ? 3.5 : 3.2) : 2.4;
     const t = (k / 16) * Math.PI * 2;
     if (k === 0) star.moveTo(Math.cos(t) * rad, Math.sin(t) * rad);
     else star.lineTo(Math.cos(t) * rad, Math.sin(t) * rad);

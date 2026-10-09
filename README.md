@@ -37,6 +37,8 @@ The project is the same on every machine; only `.env` and the `data/` folder are
 3. Run **Check integrations** in the village (or `npm run doctor`) on each machine. Residents connect only for what that machine actually has. On a laptop without Blender or Unreal, those residents stay registered but disconnected, with the reason shown.
 4. Move code with `git pull` / `git push`. Never copy `.env` or `data/` between machines.
 
+The village layout (lamp-post rotations you set in the village) is saved in `config/layout/village.json`, which **is** committed, so commit it after arranging lamps and both machines show the same village.
+
 Doctor results are tied to the machine name. Results from one machine are never trusted on another.
 
 ## Integration statuses
@@ -97,7 +99,7 @@ Residents, runtimes, providers, tool servers and playbooks are JSON manifests in
 npm test
 ```
 
-45 tests cover the registries, event log, task engine, approvals, Echo autonomy, the API, the village's event-to-visual mapping, exports and secrets, and the Tool Gateway's security boundaries. One test drives the real Codex app-server; it is reported as skipped (not passed) when Codex is not installed.
+51 tests cover the registries, event log, task engine, approvals, Echo autonomy, the API, the village's event-to-visual mapping, the custom models, the village layout, exports and secrets, and the Tool Gateway's security boundaries. One test drives the real Codex app-server; it is reported as skipped (not passed) when Codex is not installed.
 
 ## Export without GitHub
 
@@ -131,12 +133,23 @@ Experimental agent tasks run in the separate **virelune-sandbox** repository, ne
 | Fly to a building | Double-click it, or click a resident in the left panel | |
 | Back to the overview | | Home or 0 |
 | Show or hide panels | | P |
+| Turn a lamp post | Click it, then use the arrow buttons | [ / ] (Shift for 5°), Esc when done |
 
 The village lowers its render resolution automatically on slower GPUs and restores it when there is headroom.
 
 ## Art and 3D models
 
-The village uses custom textured models for all six buildings and five residents (Echo, Claude, Codex, Aura, Scribe), listed in `web/assets/models/manifest.json` (see [web/assets/models/README.md](web/assets/models/README.md)). Procedural placeholders show while models load and stay in place for any model that fails to load. Disconnected or unchecked residents are dimmed and their buildings slightly darker; a connected resident is shown at full colour with a soft ring at its feet. There are no work animations unless a real run is in progress. Open `http://127.0.0.1:4317/?stats` for a frame-rate readout.
+The village uses custom textured models for all seven buildings, the street lamps and five residents (Echo, Claude, Codex, Aura, Scribe), listed in `web/assets/models/manifest.json` (see [web/assets/models/README.md](web/assets/models/README.md)). Procedural placeholders show while models load and stay in place for any model that fails to load. Disconnected or unchecked residents are dimmed and their buildings slightly darker; a connected resident is shown at full colour with a soft ring at its feet. There are no work animations unless a real run is in progress. The fountain, river, waterfalls, bridges, fences and lamps are ambient scenery built after the hub concept; none of it reacts to agent work. Open `http://127.0.0.1:4317/?stats` for a frame-rate readout.
+
+| Building | Residents |
+| --- | --- |
+| Town Hall | Echo |
+| Library & Archives | Claude |
+| Engineering Forge | Codex |
+| Unreal Workshop | Aura |
+| UE Studio | Codex · Unreal, Claude · Unreal |
+| Blender House | Codex · Blender, Claude · Blender |
+| Post Office | Scribe |
 
 `docs/concept-art/` holds the reference sheets for the layout and the residents.
 

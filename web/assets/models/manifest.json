@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "$comment": "Custom village models. width/height are target sizes in village units; models are scaled to fit and stand on the ground. 'source' is the original file name from the art export. Textures were resized to 1024 px by scripts/optimize_glb.py; geometry is unchanged.",
+  "$comment": "Custom village models. width/height are target sizes in village units; models are scaled to fit and stand on the ground. 'source' is the original file name from the art export. Textures were resized to 1024 px by scripts/optimize_glb.py; geometry is unchanged, except the street lamp, which was simplified from 80k to 12k triangles with gltfpack (-si 0.08 -sp -se 0.03) because it is repeated around the village.",
   "buildings": {
     "town-hall": {
       "file": "buildings/town-hall.glb",
@@ -9,7 +9,7 @@
     },
     "library": {
       "file": "buildings/library.glb",
-      "source": "Blue_Building.glb",
+      "source": "Claude_Building.glb",
       "width": 8.4
     },
     "engineering-forge": {
@@ -24,13 +24,18 @@
     },
     "blender-house": {
       "file": "buildings/blender-house.glb",
-      "source": "Claude_Building.glb",
+      "source": "Blue_Building.glb",
       "width": 8.4
     },
     "post-office": {
       "file": "buildings/post-office.glb",
       "source": "Scribe_Building.glb",
       "width": 6.6
+    },
+    "unreal-studio": {
+      "file": "buildings/unreal-studio.glb",
+      "source": "Unreal_Building.glb",
+      "width": 8.4
     }
   },
   "characters": {
@@ -58,6 +63,13 @@
       "file": "characters/scribe.glb",
       "source": "Scribe.glb",
       "height": 2.2
+    }
+  },
+  "props": {
+    "street-lamp": {
+      "file": "props/street-lamp.glb",
+      "source": "Village_Street_Lamp.glb",
+      "height": 3.3
     }
   }
 }
