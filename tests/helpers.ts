@@ -10,9 +10,9 @@ export function tmpDir(prefix = 'virelune-test-'): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 }
 
-export function makeVillage(opts: { registries?: Registries; isResidentActive?: (id: string) => boolean; approvalTimeoutMs?: number; env?: Record<string, string | undefined>; adapters?: AgentAdapter[]; dataDir?: string } = {}) {
+export function makeVillage(opts: { registries?: Registries; isResidentActive?: (id: string) => boolean; approvalTimeoutMs?: number; env?: Record<string, string | undefined>; adapters?: AgentAdapter[] | ((v: Village) => AgentAdapter[]); dataDir?: string; chatReplyTimeoutMs?: number } = {}) {
   const dataDir = opts.dataDir ?? tmpDir();
-  const config = loadConfig({ dataDir, dbPath: path.join(dataDir, 'village.db'), layoutFile: path.join(dataDir, 'layout.json'), port: 0, machineName: 'test-machine', env: opts.env ?? { PATH: process.env.PATH } }, PROJECT_ROOT);
+  const config = loadConfig({ dataDir, dbPath: path.join(dataDir, 'village.db'), layoutFile: path.join(dataDir, 'layout.json'), sandboxDir: null, port: 0, machineName: 'test-machine', env: opts.env ?? { PATH: process.env.PATH } }, PROJECT_ROOT);
   const village = new Village(config, opts);
   village.start();
   return { village, dataDir, config };

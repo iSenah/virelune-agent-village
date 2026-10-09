@@ -199,7 +199,11 @@ export class ResidentWindow {
           })
         : [el('li', { class: 'empty' }, blocker ? `No messages yet. ${r.displayName} will be able to reply once it is connected.` : `No messages yet. Say hello to ${r.displayName}.`)]),
     );
-    this.body.replaceChildren(...[conn, this.notice ? el('div', { class: 'rw-notice' }, this.notice) : null, list, this.compose].filter((x): x is HTMLElement => !!x));
+    // Anything this resident is waiting for you to approve shows right in the conversation.
+    const asks = (d.approvals as any[]).length
+      ? el('div', { class: 'rw-asks' }, ...(d.approvals as any[]).map((a) => this.approvalCard(a, true)))
+      : null;
+    this.body.replaceChildren(...[conn, this.notice ? el('div', { class: 'rw-notice' }, this.notice) : null, list, asks, this.compose].filter((x): x is HTMLElement => !!x));
     if (stick) list.scrollTop = list.scrollHeight;
     else if (prevList) list.scrollTop = prevList.scrollTop;
     this.renderComposeState();
@@ -284,20 +288,26 @@ export class ResidentWindow {
     const d = this.detail;
     this.body.replaceChildren(
       el('ul', { class: 'approvals' },
-        ...(d.approvals.length
-          ? d.approvals.map((a: any) =>
-              el('li', {},
-                el('div', { class: 'status' }, `${a.kind.replace('_', ' ')} · risk: ${a.risk}`),
-                el('strong', {}, a.summary),
-                el('pre', { class: 'hint' }, JSON.stringify(a.detail, null, 2).slice(0, 1200)),
-                el('div', { class: 'actions' },
-                  el('button', { class: 'btn primary', type: 'button', onclick: () => api('POST', `/api/approvals/${a.id}`, { decision: 'approve' }).catch((e) => ((this.notice = e.message), this.render())) }, 'Approve'),
-                  el('button', { class: 'btn ghost', type: 'button', onclick: () => api('POST', `/api/approvals/${a.id}`, { decision: 'deny', reason: 'Denied in the resident window' }).catch((e) => ((this.notice = e.message), this.render())) }, 'Deny'),
-                ),
-              ),
-            )
-          : [el('li', { class: 'empty' }, `Nothing from ${d.resident.displayName} is waiting for your approval.`)]),
+        ...(d.approvals.length ? d.approvals.map((a: any) => this.approvalCard(a, false)) : [el('li', { class: 'empty' }, `Nothing from ${d.resident.displayName} is waiting for your approval.`)]),
       ),
+    );
+  }
+
+  /** One approval: what exactly the resident wants to do, and Approve / Deny. */
+  private approvalCard(a: any, compact: boolean): HTMLElement {
+    const det = a.detail ?? {};
+    const decide = (decision: 'approve' | 'deny') => api('POST', `/api/approvals/${a.id}`, decision === 'approve' ? { decision } : { decision, reason: 'Denied in the resident window' }).catch((e) => ((this.notice = e.message), this.render()));
+    let what: HTMLElement;
+    if (a.kind === 'codex_command') what = el('div', {}, el('code', { class: 'rw-cmd' }, String(det.command ?? '')), el('div', { class: 'hint' }, `in ${det.cwd ?? ''}${det.reason ? ` · ${det.reason}` : ''}`));
+    else if (a.kind === 'codex_file_change')
+      what = el('div', {}, ...(det.changes ?? []).map((c: any) => el('details', { class: 'rw-diff' }, el('summary', {}, `${c.kind} ${relativeTo(String(c.path), String(det.workspace ?? ''))}`), el('pre', {}, c.diff || '(no preview)'))), det.reason ? el('div', { class: 'hint' }, det.reason) : null);
+    else what = el('pre', { class: 'hint' }, JSON.stringify(det, null, 2).slice(0, 1200));
+    return el(compact ? 'div' : 'li', { class: compact ? 'rw-ask' : '' },
+      el('div', { class: 'status' }, `${compact ? 'Waiting for you · ' : ''}${a.kind.replace(/_/g, ' ')} · risk: ${a.risk}`),
+      el('strong', {}, a.summary),
+      what,
+      el('div', { class: 'actions' }, el('button', { class: 'btn primary', type: 'button', onclick: () => decide('approve') }, 'Approve'), el('button', { class: 'btn ghost', type: 'button', onclick: () => decide('deny') }, 'Deny')),
+      el('div', { class: 'hint' }, 'If nobody answers within a few minutes, this is declined automatically.'),
     );
   }
 
@@ -315,6 +325,7 @@ export class ResidentWindow {
         row('Runtime', p.runtime ? `${p.runtime.displayName}` : r.runtime, el('div', { class: 'hint' }, p.runtime?.adapterEnabled ? 'Adapter enabled' : 'Adapter not enabled yet: this resident cannot reply or run tasks')),
         row('Provider', p.provider ? `${p.provider.displayName}` : r.provider, p.provider ? el('div', { class: 'hint' }, `${billing[p.provider.billing] ?? p.provider.billing}. ${p.provider.notes}`) : null),
         row('Model', p.model ?? 'runtime default'),
+        row('Workspace', el('code', {}, p.workspace), el('div', { class: 'hint' }, 'The only folder this resident may change, and only with your approval.')),
         row('Permissions', p.permissions, el('div', { class: 'hint' }, 'Tools only through the Tool Gateway; anything that executes code always asks you first.')),
         row('Budget', `$${p.budget.perTaskUsd} per task · $${p.budget.dailyUsd} per day · ${p.budget.maxTurns} turns`),
         row('Verification', p.focus ? 'Focus resident: connects when its checks pass' : 'Kept disconnected until its own verification test passes'),
@@ -330,6 +341,15 @@ export class ResidentWindow {
         : el('p', { class: 'hint' }, r.reasons[0] ?? 'No checks yet.'),
     );
   }
+}
+
+/** Show a path relative to the resident's workspace when it is inside it. */
+function relativeTo(p: string, root: string): string {
+  if (!root) return p;
+  const norm = (x: string) => x.replace(/\\/g, '/').replace(/\/+$/, '');
+  const a = norm(p);
+  const r = norm(root);
+  return a.toLowerCase().startsWith(r.toLowerCase() + '/') ? a.slice(r.length + 1) : p;
 }
 
 function nearBottom(list: HTMLElement) {

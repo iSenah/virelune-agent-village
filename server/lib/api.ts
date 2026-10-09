@@ -127,6 +127,7 @@ export function createServer(village: Village): http.Server {
         runtime: rt ? { id: rt.id, displayName: rt.displayName, kind: rt.kind, adapterEnabled: village.adapters.has(rt.kind) } : null,
         provider: pv ? { id: pv.id, displayName: pv.displayName, billing: pv.billing, notes: pv.notes } : null,
         model: r.model,
+        workspace: village.workspaceFor(id),
         tools: r.tools.map((g) => {
           const t = reg.tools.get(g.server);
           return { server: g.server, displayName: t?.displayName ?? g.server, allow: g.allow, ask: g.ask, exclusive: t?.exclusive ?? false, classifiedTools: t ? Object.keys(t.risk).length : 0 };

@@ -53,6 +53,8 @@ export async function checkCodex(ctx: DoctorContext): Promise<IntegrationResult>
 
   // Live handshake with the real app-server.
   let handshake = false;
+  let planLogin: boolean | null = null; // null = could not tell
+  let sandboxReady = process.platform !== 'win32';
   const rpc = new StdioRpcClient(bin, ['app-server'], { env });
   rpc.onRequest = () => {
     throw new Error('doctor does not accept server requests');
@@ -64,13 +66,20 @@ export async function checkCodex(ctx: DoctorContext): Promise<IntegrationResult>
     checks.push({ name: 'app-server initialize', result: handshake ? 'pass' : 'fail', detail: handshake ? `platform ${init.platformOs ?? '?'}` : 'unexpected response' });
     const auth = await rpc.request('getAuthStatus', { includeToken: false, refreshToken: false }, 15_000);
     checks.push({ name: 'app-server getAuthStatus', result: auth?.authMethod ? 'pass' : 'fail', detail: auth?.authMethod ? `auth method: ${auth.authMethod}` : 'not logged in' });
+    const acct = await rpc.request('account/read', {}, 15_000).catch(() => null);
+    if (acct) {
+      const type = acct.account?.type ?? null;
+      planLogin = type === 'chatgpt';
+      checks.push({ name: 'sign-in type (village needs a ChatGPT plan login)', result: planLogin ? 'pass' : 'fail', detail: type === 'chatgpt' ? `ChatGPT plan${acct.account.planType ? ` (${acct.account.planType})` : ''}` : type === 'apiKey' ? 'API key: billed per token, refused by the village' : type ? `${type}: not supported` : 'not signed in' });
+    }
     const mcp = await rpc.request('mcpServerStatus/list', {}, 30_000);
     const names = (mcp?.data ?? []).map((s: any) => s.name);
     const onlyGateway = names.every((n: string) => n === 'village');
     checks.push({ name: 'MCP isolation (village Codex home)', result: onlyGateway ? 'pass' : 'fail', detail: names.length ? `MCP servers visible to Codex: ${names.join(', ')}` : 'no MCP servers inherited' });
     if (process.platform === 'win32') {
       const sb = await rpc.request('windowsSandbox/readiness', {}, 15_000).catch((e: Error) => ({ error: e.message }));
-      checks.push({ name: 'Windows sandbox readiness', result: sb?.error ? 'fail' : 'pass', detail: JSON.stringify(sb).slice(0, 200) });
+      sandboxReady = sb?.status === 'ready';
+      checks.push({ name: 'Windows sandbox readiness', result: sandboxReady ? 'pass' : 'fail', detail: sandboxReady ? 'ready' : sb?.error ? sb.error : `${sb?.status ?? 'unknown'}: run npm run codex:sandbox-setup` });
     } else {
       checks.push({ name: 'Sandbox check', result: 'skip', detail: 'Run `npm run probe:sandbox` to verify sandbox enforcement on this machine.' });
     }
@@ -80,8 +89,16 @@ export async function checkCodex(ctx: DoctorContext): Promise<IntegrationResult>
     rpc.close();
   }
   const status: IntegrationStatus = handshake && authed ? 'connected' : authed ? 'authenticated' : handshake ? 'installed' : 'untested';
-  const summary = handshake && authed ? 'Codex app-server handshake passed and the village Codex home is logged in.' : handshake ? 'Codex runs, but the village Codex home is not logged in. Run: npm run codex:login' : 'Codex is installed but the app-server handshake failed.';
-  return result('codex', name, costs, checks, status, status === 'connected', version, summary);
+  let summary = handshake && authed ? 'Codex app-server handshake passed and the village Codex home is logged in with a ChatGPT plan.' : handshake ? 'Codex runs, but the village Codex home is not logged in. Run: npm run codex:login' : 'Codex is installed but the app-server handshake failed.';
+  let ready = status === 'connected';
+  if (ready && planLogin === false) {
+    ready = false;
+    summary = 'The village Codex home is signed in with an API key (billed per token). Virelune only uses your ChatGPT plan: run npm run codex:login and choose "Sign in with ChatGPT".';
+  } else if (ready && !sandboxReady) {
+    ready = false;
+    summary = "Codex's Windows sandbox is not set up, so workspace limits could not be enforced. Run: npm run codex:sandbox-setup";
+  }
+  return result('codex', name, costs, checks, ready ? status : status === 'connected' ? 'authenticated' : status, ready, version, summary);
 }
 
 export async function checkClaudeSdk(ctx: DoctorContext): Promise<IntegrationResult> {

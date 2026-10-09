@@ -36,6 +36,8 @@ export type ChatTurn = { role: ChatRole; body: string };
 /** What an adapter gets for one reply. It must answer with real model output or throw. */
 export type AdapterContext = {
   resident: Resident;
+  /** The village run id for this reply (events and approvals made during the reply carry it). */
+  runId: string;
   message: string;
   /** Earlier completed turns of this conversation, oldest first (not including `message`). */
   history: ChatTurn[];
@@ -51,6 +53,8 @@ export interface AgentAdapter {
   /** Runtime kind this adapter serves (matches config/runtimes/*.json "kind"). */
   readonly runtimeKind: string;
   reply(ctx: AdapterContext): Promise<AdapterReply>;
+  /** Release processes and connections (village shutdown). */
+  close?(): void;
 }
 
 type Deps = {
@@ -59,6 +63,7 @@ type Deps = {
   registries: () => Registries;
   residents: () => ResidentView[];
   adapters: Map<string, AgentAdapter>;
+  replyTimeoutMs?: number;
 };
 
 export class ChatService {
@@ -163,7 +168,8 @@ export class ChatService {
       this.d.events.append({ type: 'run.started', actor: r.id, runId, payload: { kind: 'chat', runtime: rt.id, messageId, replyId } });
     });
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(new Error(`no reply within ${REPLY_TIMEOUT_MS / 60_000} minutes`)), REPLY_TIMEOUT_MS);
+    const limit = this.d.replyTimeoutMs ?? REPLY_TIMEOUT_MS;
+    const timer = setTimeout(() => controller.abort(new Error(`No reply within ${limit >= 60_000 ? `${Math.round(limit / 60_000)} minutes` : `${Math.round(limit / 1000)} seconds`}; the reply was stopped.`)), limit);
     const entry = { controller, runId, replyId, partial: '' };
     this.active.set(r.id, entry);
     const onDelta = (text: string) => {
@@ -171,7 +177,7 @@ export class ChatService {
       this.d.events.ephemeral('chat.delta', { resident: r.id, replyId, text });
     };
     Promise.resolve()
-      .then(() => adapter.reply({ resident: r, message: body, history, threadState, signal: controller.signal, onDelta }))
+      .then(() => adapter.reply({ resident: r, runId, message: body, history, threadState, signal: controller.signal, onDelta }))
       .then((out) => {
         if (controller.signal.aborted) throw controller.signal.reason;
         const text = typeof out?.text === 'string' ? out.text : '';

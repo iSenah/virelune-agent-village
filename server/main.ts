@@ -1,10 +1,25 @@
 // Virelune Agent Village: start Village Hall (backend + web app). Works with zero agent integrations.
+import { CodexAdapter } from '../integrations/adapters/codex.ts';
 import { createServer } from './lib/api.ts';
 import { Village } from './lib/app.ts';
 import { loadConfig } from './lib/config.ts';
 
 const config = loadConfig();
-const village = new Village(config);
+// Real runtime adapters only. A resident can answer only when its checks pass AND its adapter is here.
+const village = new Village(config, {
+  adapters: (v) => [
+    new CodexAdapter({
+      dataDir: config.dataDir,
+      env: config.env,
+      events: v.events,
+      approvals: v.approvals,
+      issueToken: (id) => v.gateway.issueToken(id),
+      revokeToken: (id) => v.gateway.revokeToken(id),
+      gatewayUrl: () => `http://${config.host === '::1' ? '[::1]' : config.host}:${config.port}`,
+      workspaceFor: (id) => v.workspaceFor(id),
+    }),
+  ],
+});
 village.start();
 const server = createServer(village);
 

@@ -2,7 +2,7 @@
 
 A browser-based, stylized village where real AI agents work on real projects. Echo, the Mayor, coordinates. Codex builds, Claude designs and researches, and specialist residents join as their integrations are verified. Every sign of work in the village comes from a real backend event; nothing is simulated.
 
-**Status: Version 2, Phase 1 (resident chat).** Village Hall (backend), registries, event log, task engine, approvals, Echo's autonomy setting, the Tool Gateway, `village doctor`, the 3D village, and a chat window for every resident all run. Runtime adapters that let residents actually reply and work arrive in Phase 2, starting with Codex, so for now messages are stored and marked "not delivered" with the reason. See [docs/v2-plan.md](docs/v2-plan.md) for the V1 audit, the V2 phases and how to get your PC ready for the first agent, and [docs/phase-0-report.md](docs/phase-0-report.md) for the original research.
+**Status: Version 2, Phase 2A (Codex adapter).** Village Hall (backend), registries, event log, task engine, approvals, Echo's autonomy setting, the Tool Gateway, `village doctor`, the 3D village, and a chat window for every resident all run. Codex can now reply for real through your ChatGPT plan, once it is signed in for the village (see [Verify your first real Codex conversation](docs/v2-plan.md#verify-your-first-real-codex-conversation-windows)). Every other resident still marks messages "not delivered" with the reason until its own adapter and checks are in place. See [docs/v2-plan.md](docs/v2-plan.md) for the V1 audit, the V2 phases and how to get your PC ready for the first agent, and [docs/phase-0-report.md](docs/phase-0-report.md) for the original research.
 
 ## Quick start (Windows)
 
@@ -69,13 +69,15 @@ npm run doctor              # summary
 npm run doctor -- --verbose # every individual check
 npm run doctor -- --offline # skip the free live API key checks
 npm run probe:sandbox       # verify Codex's sandbox blocks writes outside the workspace and network access
+npm run codex:verify        # one real Codex reply through the village adapter (uses your ChatGPT plan)
+npm run codex:sandbox-setup # Windows: one-time Codex sandbox setup for the village
 ```
 
 ## Connecting the focus residents
 
 | Resident | What it needs on this machine |
 | --- | --- |
-| **Codex** | Codex CLI (`npm install -g @openai/codex`), then `npm run codex:login`. The village uses its **own** Codex home under `data/`, so your personal Codex settings and MCP servers are never loaded. |
+| **Codex** | Codex CLI (`npm install -g @openai/codex`), then `npm run codex:login` (choose Sign in with ChatGPT), on Windows `npm run codex:sandbox-setup`, then `npm run codex:verify`. The village uses its **own** Codex home under `data/`, so your personal Codex settings and MCP servers are never loaded. API-key sign-ins are refused. |
 | **Claude** | `ANTHROPIC_API_KEY` in `.env` (paid API; a Claude subscription can't be used by SDK apps). The Claude Agent SDK package is added in the next milestone. |
 | **Echo** | `OPENAI_API_KEY` in `.env` (paid API; no free tier). The OpenAI Agents SDK package is added in the next milestone. |
 
@@ -92,6 +94,7 @@ All machine settings live in `.env` (see `.env.example`). Paths are resolved rel
 | `VILLAGE_MACHINE_NAME` | Shown in the village; doctor results are tied to it |
 | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` | Echo and Claude |
 | `CODEX_PATH` | Only if `codex` is not on PATH |
+| `VILLAGE_SANDBOX_DIR` | Your virelune-sandbox clone, the only folder residents may change (with your approval). Defaults to `../virelune-sandbox` if it exists, else `data/workspaces/<resident>` |
 | `OLLAMA_HOST`, `BLENDER_PATH`, `BLENDER_MCP_COMMAND`, `UNREAL_ENGINE_ROOT`, `UNREAL_MCP_COMMAND`, `AURA_MCP_COMMAND` | Optional specialist tools |
 
 Residents, runtimes, providers, tool servers and playbooks are JSON manifests in `config/`. They are validated on startup; invalid ones are reported in the activity feed and not loaded.
@@ -110,7 +113,7 @@ Residents, runtimes, providers, tool servers and playbooks are JSON manifests in
 npm test
 ```
 
-61 tests cover the registries, event log, task engine, approvals, Echo autonomy, resident chat, the API, the village's event-to-visual mapping, the custom models, the village layout, exports and secrets, and the Tool Gateway's security boundaries. One test drives the real Codex app-server; it is reported as skipped (not passed) when Codex is not installed.
+76 tests cover the registries, event log, task engine, approvals, Echo autonomy, resident chat, the Codex adapter, the API, the village's event-to-visual mapping, the custom models, the village layout, exports and secrets, and the Tool Gateway's security boundaries. Two tests drive the real Codex CLI (isolation, and refusing an unsigned village home); they are reported as skipped (not passed) when Codex is not installed. None of the tests use your Codex sign-in.
 
 ## Export without GitHub
 

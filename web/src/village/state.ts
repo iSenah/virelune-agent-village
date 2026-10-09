@@ -109,6 +109,14 @@ export function describeEvent(e: EventLike, names: Map<string, string>): string 
       return `${who(e.actor)} could not finish: ${p.error}`;
     case 'run.interrupted':
       return `${who(e.actor)} was stopped${p.reason ? ` (${p.reason})` : ''}`;
+    case 'runtime.command_finished':
+      return `${who(e.actor)} ran \`${p.command}\`${p.exitCode !== null && p.exitCode !== undefined ? ` (exit ${p.exitCode})` : ''}`;
+    case 'runtime.files_changed':
+      return `${who(e.actor)} ${p.status === 'completed' ? 'changed' : 'proposed changes to'} ${(p.files ?? []).map((f: any) => String(f.path).split(/[\\/]/).pop()).join(', ')}`;
+    case 'runtime.tool_called':
+      return `${who(e.actor)} used ${p.server}: ${p.tool}`;
+    case 'runtime.request_declined':
+      return `Declined automatically for ${who(String(p.resident))}: ${p.what} ${p.reason}`;
     case 'lease.acquired':
       return `${who(e.actor)} took the key to ${p.server}`;
     case 'lease.released':

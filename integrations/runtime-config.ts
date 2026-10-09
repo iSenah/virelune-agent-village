@@ -25,7 +25,10 @@ export function prepareCodexLaunch(o: { dataDir: string; residentId: string; gat
   const env: Record<string, string | undefined> = { ...o.baseEnv, CODEX_HOME: codexHome, [GATEWAY_TOKEN_ENV]: o.token };
   delete env.OPENAI_API_KEY; // Codex uses its own login in the village Codex home, not Echo's key.
   delete env.ANTHROPIC_API_KEY;
-  return { args: ['app-server'], env, codexHome, configToml };
+  delete env.CODEX_API_KEY; // an API key would bill per token instead of the ChatGPT plan
+  // The resident's gateway URL is also passed on the command line, so several Codex residents starting at once
+  // can share the village Codex home (and its single sign-in) without racing on config.toml.
+  return { args: ['app-server', '-c', `mcp_servers.village.url=${JSON.stringify(url)}`], env, codexHome, configToml };
 }
 
 /** Thread settings Village Hall always sends to Codex: workspace-only writes and approvals routed to us. */

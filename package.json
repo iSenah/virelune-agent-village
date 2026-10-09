@@ -13,6 +13,8 @@
     "export": "node --disable-warning=ExperimentalWarning server/cli.ts export",
     "test": "node --disable-warning=ExperimentalWarning --test --test-concurrency=1 \"tests/*.test.ts\"",
     "codex:login": "node --disable-warning=ExperimentalWarning server/cli.ts codex-login",
+    "codex:verify": "node --disable-warning=ExperimentalWarning server/cli.ts codex-verify",
+    "codex:sandbox-setup": "node --disable-warning=ExperimentalWarning server/cli.ts codex-sandbox-setup",
     "probe:sandbox": "node --disable-warning=ExperimentalWarning integrations/probes/codex-sandbox.ts"
   }
 }

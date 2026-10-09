@@ -192,6 +192,8 @@ test('Codex launch config: only the gateway, no API keys, token only in the envi
     const toml = fs.readFileSync(path.join(launch.codexHome, 'config.toml'), 'utf8');
     assert.equal((toml.match(/\[mcp_servers\./g) ?? []).length, 1);
     assert.ok(!toml.includes('tok123'), 'the token must not be written to disk');
+    assert.deepEqual(launch.args, ['app-server', '-c', 'mcp_servers.village.url="http://127.0.0.1:4317/mcp/codex"']);
+    assert.ok(!launch.args.join(' ').includes('tok123'), 'the token must not be on the command line');
   } finally {
     fs.rmSync(dataDir, { recursive: true, force: true });
   }

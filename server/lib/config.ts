@@ -16,10 +16,25 @@ export type VillageConfig = {
   webDir: string;
   /** Shared village layout (e.g. lamp rotations). Lives in the repo so every machine gets the same village. */
   layoutFile: string;
+  /** Folder residents work in (VILLAGE_SANDBOX_DIR). Null means a per-resident folder under data/workspaces. */
+  sandboxDir: string | null;
   machineName: string;
   platform: NodeJS.Platform;
   env: Record<string, string | undefined>;
 };
+
+/**
+ * Where residents may work. VILLAGE_SANDBOX_DIR wins (absolute, or relative to the project folder). Otherwise a
+ * clone of virelune-sandbox next to this project is used if it exists. Never the village project itself.
+ */
+function resolveSandbox(env: Record<string, string | undefined>, root: string): string | null {
+  const raw = env.VILLAGE_SANDBOX_DIR;
+  const dir = raw ? (path.isAbsolute(raw) ? raw : path.resolve(root, raw)) : path.resolve(root, '..', 'virelune-sandbox');
+  if (!raw && !fs.existsSync(dir)) return null;
+  const rel = path.relative(path.resolve(root), path.resolve(dir));
+  if (rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel))) throw new Error(`VILLAGE_SANDBOX_DIR must be outside the village project (got ${dir}). Point it at your virelune-sandbox clone.`);
+  return path.resolve(dir);
+}
 
 /** Parse a .env file (KEY=VALUE lines, # comments, optional quotes). */
 export function parseDotEnv(text: string): Record<string, string> {
@@ -64,6 +79,7 @@ export function loadConfig(overrides: Partial<VillageConfig> = {}, root = PROJEC
     configDir: overrides.configDir ?? path.join(root, 'config'),
     webDir: overrides.webDir ?? path.join(root, 'web'),
     layoutFile: overrides.layoutFile ?? path.join(overrides.configDir ?? path.join(root, 'config'), 'layout', 'village.json'),
+    sandboxDir: overrides.sandboxDir !== undefined ? overrides.sandboxDir : resolveSandbox(env, root),
     machineName: overrides.machineName ?? (env.VILLAGE_MACHINE_NAME || os.hostname()),
     platform: process.platform,
     env,
