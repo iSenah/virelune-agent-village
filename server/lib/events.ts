@@ -23,12 +23,14 @@ export type NewEvent = {
 };
 
 type Listener = (e: VillageEvent) => void;
+export type EphemeralListener = (name: string, data: Record<string, unknown>) => void;
 
 const TYPE_PATTERN = /^[a-z]+(\.[a-z_]+)+$/;
 
 export class EventLog {
   private db: DB;
   private listeners = new Set<Listener>();
+  private ephemeralListeners = new Set<EphemeralListener>();
 
   constructor(db: DB) {
     this.db = db;
@@ -88,6 +90,25 @@ export class EventLog {
   latestOfType(type: string): VillageEvent | null {
     const r = this.db.prepare('SELECT * FROM events WHERE type = ? ORDER BY seq DESC LIMIT 1').get(type);
     return r ? rowToEvent(r) : null;
+  }
+
+  /**
+   * Live-only notifications that are NOT part of the log (e.g. streamed reply text). Anything that matters is
+   * recorded as a real event when it completes; these only make the interface feel live.
+   */
+  ephemeral(name: string, data: Record<string, unknown>) {
+    for (const l of this.ephemeralListeners) {
+      try {
+        l(name, data);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  subscribeEphemeral(l: EphemeralListener): () => void {
+    this.ephemeralListeners.add(l);
+    return () => this.ephemeralListeners.delete(l);
   }
 
   subscribe(l: Listener): () => void {

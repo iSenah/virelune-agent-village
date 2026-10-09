@@ -18,12 +18,26 @@ export class Store {
   events: any[] = [];
   connected = false;
   private listeners = new Set<Listener>();
+  private eventListeners = new Set<(e: any) => void>();
+  private ephemeralListeners = new Set<(name: string, data: any) => void>();
   private source: EventSource | null = null;
   private refreshTimer: number | null = null;
 
   subscribe(l: Listener) {
     this.listeners.add(l);
     return () => this.listeners.delete(l);
+  }
+
+  /** Every new event from the live stream (after the initial history). */
+  onEvent(l: (e: any) => void) {
+    this.eventListeners.add(l);
+    return () => this.eventListeners.delete(l);
+  }
+
+  /** Live-only notifications (streamed reply text). Never stored; the finished reply arrives as a real event. */
+  onEphemeral(l: (name: string, data: any) => void) {
+    this.ephemeralListeners.add(l);
+    return () => this.ephemeralListeners.delete(l);
   }
 
   private emit() {
@@ -61,6 +75,11 @@ export class Store {
       if (this.events.length > 8000) this.events.splice(0, this.events.length - 8000);
       this.scheduleRefresh();
       this.emit();
+      for (const l of this.eventListeners) l(e);
+    });
+    this.source.addEventListener('chat.delta', (m) => {
+      const data = JSON.parse((m as MessageEvent).data);
+      for (const l of this.ephemeralListeners) l('chat.delta', data);
     });
   }
 

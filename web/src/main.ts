@@ -4,24 +4,27 @@ import { BUILDINGS } from './village/buildings.ts';
 import { deriveActivity, deriveVisuals, describeEvent } from './village/state.ts';
 import type { LampInfo, VillageScene } from './village/scene.ts';
 
-const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector(sel) as T;
-
-/** Tiny DOM builder. Text is always set via textContent, so agent-provided strings can never inject HTML. */
-function el(tag: string, attrs: Record<string, any> = {}, ...children: (Node | string | null | undefined | false)[]): HTMLElement {
-  const n = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs)) {
-    if (v === undefined || v === null || v === false) continue;
-    if (k === 'class') n.className = String(v);
-    else if (k.startsWith('on') && typeof v === 'function') n.addEventListener(k.slice(2), v);
-    else n.setAttribute(k, v === true ? '' : String(v));
-  }
-  for (const c of children) if (c !== null && c !== undefined && c !== false) n.append(c instanceof Node ? c : document.createTextNode(String(c)));
-  return n;
-}
+import { $, el } from './dom.ts';
+import { ResidentWindow } from './residentWindow.ts';
 
 const store = new Store();
 let scene: VillageScene | null = null;
 let selected: { building?: string; resident?: string } | null = null;
+const residentWindow = new ResidentWindow(store, new Map(BUILDINGS.map((b) => [b.id, b.place])));
+residentWindow.onClose = () => {
+  selected = null;
+  scene?.overview();
+  renderResidents();
+};
+
+/** Open the resident window (and fly the camera there) for a building or a specific resident. */
+function openResident(building?: string, resident?: string) {
+  residentWindow.open(building, resident);
+  selected = { building: residentWindow.currentBuilding ?? building, resident: residentWindow.currentResident ?? resident };
+  const b = resident ? store.state?.residents.find((r: any) => r.id === resident)?.building : building;
+  if (b) scene?.focusBuilding(b);
+  renderResidents();
+}
 
 async function boot() {
   try {
@@ -36,11 +39,7 @@ async function boot() {
       badge.title = m.failed.length ? `Could not load: ${m.failed.map((f) => `${f.key} (${f.file}: ${f.error})`).join('; ')}. Placeholders are shown instead.` : 'Custom 3D models';
     });
     scene = new VillageScene($<HTMLCanvasElement>('#village'));
-    scene.onSelect = (s) => {
-      selected = s;
-      if (s.building) scene!.focusBuilding(s.building);
-      renderDetail();
-    };
+    scene.onSelect = (s) => openResident(s.building, s.resident);
     wireLamps(scene);
   } catch (e) {
     // The control panel keeps working even if 3D cannot start (old GPU, WebGL disabled).
@@ -165,7 +164,6 @@ function render() {
   renderTasks();
   renderApprovals();
   renderIntegrations();
-  renderDetail();
   const { activeRuns } = deriveActivity(store.events);
   $('#truth').textContent = activeRuns.size
     ? `${activeRuns.size} real run${activeRuns.size === 1 ? '' : 's'} in progress. Everything that looks like work comes from real events.`
@@ -203,12 +201,9 @@ function renderResidents() {
   const groups: { id: string; name: string; rs: any[] }[] = BUILDINGS.map((b) => ({ id: b.id, name: b.place, rs: s.residents.filter((r: any) => r.building === b.id) }));
   const elsewhere = s.residents.filter((r: any) => !known.has(r.building));
   if (elsewhere.length) groups.push({ id: '', name: 'Elsewhere', rs: elsewhere });
-  const pick = (building: string, resident?: string) => {
-    selected = { building, resident };
-    if (building) scene?.focusBuilding(building);
-    renderDetail();
-    render();
-  };
+  const pick = (building: string, resident?: string) => openResident(building, resident);
+  const { activeRuns } = deriveActivity(store.events);
+  const answering = new Set(activeRuns.values());
   list.replaceChildren(
     ...groups
       .filter((g) => g.rs.length)
@@ -219,7 +214,7 @@ function renderResidents() {
           .map((r) =>
             el('li', { class: selected?.resident === r.id ? 'selected' : '', onclick: () => pick(r.building, r.id) },
               el('span', { class: `dot ${r.status}` }),
-              el('span', { class: 'name' }, r.displayName, r.focus ? el('span', { class: 'tag' }, 'focus') : null),
+              el('span', { class: 'name' }, r.displayName, r.focus ? el('span', { class: 'tag' }, 'focus') : null, answering.has(r.id) ? el('span', { class: 'tag busy' }, 'working') : null),
               el('span', { class: 'why' }, r.status === 'connected' ? 'Connected: integration checks passed' : r.reasons[0] ?? ''),
             ),
           ),
@@ -293,31 +288,6 @@ function renderIntegrations() {
         el('table', { class: 'checks' }, ...r.checks.map((c: any) => el('tr', {}, el('td', {}, c.result.toUpperCase()), el('td', {}, c.name), el('td', { class: 'muted' }, c.detail)))),
       ),
     ),
-  );
-}
-
-function renderDetail() {
-  const box = $('#detail');
-  const s = store.state;
-  if (!selected || !s) {
-    box.hidden = true;
-    return;
-  }
-  const rs = s.residents.filter((r: any) => (selected!.resident ? r.id === selected!.resident : r.building === selected!.building));
-  if (!rs.length) {
-    box.hidden = true;
-    return;
-  }
-  box.hidden = false;
-  box.replaceChildren(
-    el('button', { class: 'close', type: 'button', 'aria-label': 'Close', onclick: () => { selected = null; scene?.overview(); renderDetail(); } }, '×'),
-    ...rs.flatMap((r: any) => [
-      el('h3', {}, r.displayName),
-      el('div', { class: 'hint' }, r.role),
-      el('div', {}, el('span', { class: `badge ${r.status === 'connected' ? 'connected' : r.status === 'untested' ? 'untested' : 'unavailable'}` }, r.status), ` runtime: ${r.runtime} · provider: ${r.provider}${r.model ? ` · model: ${r.model}` : ''}`),
-      r.reasons.length ? el('ul', { class: 'hint' }, ...r.reasons.map((x: string) => el('li', {}, '• ' + x))) : null,
-      r.parts.length ? el('table', { class: 'checks' }, ...r.parts.map((p: any) => el('tr', {}, el('td', {}, el('span', { class: `badge ${p.status}` }, p.status)), el('td', {}, p.name)))) : null,
-    ]),
   );
 }
 

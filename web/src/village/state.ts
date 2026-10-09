@@ -95,6 +95,20 @@ export function describeEvent(e: EventLike, names: Map<string, string>): string 
       return `${who(e.actor)} used ${p.server}: ${p.tool}${p.isError ? ' (error)' : ''}`;
     case 'tool.auth_failed':
       return `Tool Gateway rejected a request for ${p.resident} (${p.reason})`;
+    case 'chat.message_sent':
+      return `You wrote to ${who(String(p.resident))}`;
+    case 'chat.message_undelivered':
+      return `Message to ${who(String(p.resident))} not delivered: ${p.reason}`;
+    case 'chat.reply_completed':
+      return `${who(e.actor)} replied`;
+    case 'run.started':
+      return p.kind === 'chat' ? `${who(e.actor)} is answering your message` : `${who(e.actor)} started work${e.taskId ? ` on task ${e.taskId}` : ''}`;
+    case 'run.finished':
+      return p.kind === 'chat' ? `${who(e.actor)} finished answering` : `${who(e.actor)} finished work${e.taskId ? ` on task ${e.taskId}` : ''}`;
+    case 'run.failed':
+      return `${who(e.actor)} could not finish: ${p.error}`;
+    case 'run.interrupted':
+      return `${who(e.actor)} was stopped${p.reason ? ` (${p.reason})` : ''}`;
     case 'lease.acquired':
       return `${who(e.actor)} took the key to ${p.server}`;
     case 'lease.released':

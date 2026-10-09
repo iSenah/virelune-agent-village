@@ -109,3 +109,11 @@ test('the page allows blob: URLs that the GLB loader uses for embedded textures'
   assert.match(csp, /connect-src[^;]*blob:/);
   assert.doesNotMatch(csp, /script-src[^;]*unsafe/);
 });
+
+test('every browser TypeScript file compiles to JavaScript (what the server serves)', async () => {
+  const { stripTypeScriptTypes } = await import('node:module');
+  const dir = path.join(PROJECT_ROOT, 'web', 'src');
+  const files = fs.readdirSync(dir, { recursive: true }).map(String).filter((f) => f.endsWith('.ts'));
+  assert.ok(files.length > 5);
+  for (const f of files) assert.doesNotThrow(() => stripTypeScriptTypes(fs.readFileSync(path.join(dir, f), 'utf8'), { mode: 'strip' }), `web/src/${f} has invalid syntax`);
+});

@@ -1,6 +1,7 @@
 // Composition root: wires the database, event log, registries, task engine, approvals, settings and gateway.
 import type { IntegrationResult } from '../../integrations/types.ts';
 import { Approvals } from './approvals.ts';
+import { ChatService, type AgentAdapter } from './chat.ts';
 import type { VillageConfig } from './config.ts';
 import { openDb, tx, type DB } from './db.ts';
 import { latestDoctorResults, recordDoctorReport, runDoctorChild } from './doctor.ts';
@@ -19,12 +20,15 @@ export class Village {
   readonly settings: Settings;
   readonly tasks: TaskEngine;
   readonly gateway: ToolGateway;
+  readonly chat: ChatService;
+  /** Runtime adapters by runtime kind. Only real adapters are ever registered; none means nobody can answer. */
+  readonly adapters: Map<string, AgentAdapter>;
   registries: Registries;
   private doctorResults: Map<string, IntegrationResult> | null;
   private lastViews = new Map<string, string>();
   doctorRunning = false;
 
-  constructor(config: VillageConfig, opts: { registries?: Registries; isResidentActive?: (id: string) => boolean; approvalTimeoutMs?: number } = {}) {
+  constructor(config: VillageConfig, opts: { registries?: Registries; isResidentActive?: (id: string) => boolean; approvalTimeoutMs?: number; adapters?: AgentAdapter[] } = {}) {
     this.config = config;
     this.db = openDb(config.dbPath);
     this.events = new EventLog(this.db);
@@ -47,6 +51,8 @@ export class Village {
       isResidentActive: opts.isResidentActive ?? ((id) => this.residents().find((r) => r.id === id)?.status === 'connected'),
       approvalTimeoutMs: opts.approvalTimeoutMs,
     });
+    this.adapters = new Map((opts.adapters ?? []).map((a) => [a.runtimeKind, a]));
+    this.chat = new ChatService({ db: this.db, events: this.events, registries: () => this.registries, residents: () => this.residents(), adapters: this.adapters });
   }
 
   /** Startup: record the boot, report registry problems, recover interrupted work. */
@@ -56,6 +62,7 @@ export class Village {
       for (const e of this.registries.errors) this.events.append({ type: 'registry.invalid', actor: 'system', payload: { file: e.file, message: e.message } });
     });
     this.tasks.recoverAfterRestart();
+    this.chat.recoverAfterRestart();
     this.refreshResidents();
   }
 

@@ -62,6 +62,30 @@ const MIGRATIONS: string[] = [
     expires_at TEXT NOT NULL
   );
   `,
+  // 2: resident conversations
+  `
+  CREATE TABLE chat_messages (
+    id TEXT PRIMARY KEY,
+    resident TEXT NOT NULL,
+    thread TEXT NOT NULL DEFAULT 'main',
+    role TEXT NOT NULL,
+    body TEXT NOT NULL,
+    status TEXT NOT NULL,
+    reason TEXT,
+    run_id TEXT,
+    reply_to TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX chat_messages_resident ON chat_messages(resident, thread);
+  CREATE TABLE chat_threads (
+    resident TEXT NOT NULL,
+    thread TEXT NOT NULL,
+    runtime_state TEXT,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (resident, thread)
+  );
+  `,
 ];
 
 export function openDb(dbPath: string): DB {

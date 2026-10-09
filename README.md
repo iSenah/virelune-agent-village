@@ -2,7 +2,7 @@
 
 A browser-based, stylized village where real AI agents work on real projects. Echo, the Mayor, coordinates. Codex builds, Claude designs and researches, and specialist residents join as their integrations are verified. Every sign of work in the village comes from a real backend event; nothing is simulated.
 
-**Status: Milestone 1 (foundation).** Village Hall (backend), registries, event log, task engine, approvals, Echo's autonomy setting, the Tool Gateway, `village doctor`, and a procedural 3D village all run. Runtime adapters that let residents actually do work are the next milestone, so no resident works yet. See [docs/phase-0-report.md](docs/phase-0-report.md).
+**Status: Version 2, Phase 1 (resident chat).** Village Hall (backend), registries, event log, task engine, approvals, Echo's autonomy setting, the Tool Gateway, `village doctor`, the 3D village, and a chat window for every resident all run. Runtime adapters that let residents actually reply and work arrive in Phase 2, starting with Codex, so for now messages are stored and marked "not delivered" with the reason. See [docs/v2-plan.md](docs/v2-plan.md) for the V1 audit, the V2 phases and how to get your PC ready for the first agent, and [docs/phase-0-report.md](docs/phase-0-report.md) for the original research.
 
 ## Quick start (Windows)
 
@@ -40,6 +40,17 @@ The project is the same on every machine; only `.env` and the `data/` folder are
 The village layout (lamp-post rotations you set in the village) is saved in `config/layout/village.json`, which **is** committed, so commit it after arranging lamps and both machines show the same village.
 
 Doctor results are tied to the machine name. Results from one machine are never trusted on another.
+
+## Talking to residents
+
+Click a resident's figure, its building, or its name in the residents list. The resident window has:
+
+- **Chat**: your conversation, kept in this machine's database. You can only send when the resident can really answer (connected, and its runtime adapter enabled); otherwise the window says why. There are no canned or simulated replies.
+- **Tasks**: tasks assigned to this resident, and a form to add one.
+- **Approvals**: anything this resident is waiting for you to approve.
+- **Profile**: role, runtime, provider and billing, model, permissions, budget, tools and what each may do, and the integration checks behind its status.
+
+Buildings with two residents (Blender House, UE Studio) show both as tabs at the top.
 
 ## Integration statuses
 
@@ -99,7 +110,7 @@ Residents, runtimes, providers, tool servers and playbooks are JSON manifests in
 npm test
 ```
 
-51 tests cover the registries, event log, task engine, approvals, Echo autonomy, the API, the village's event-to-visual mapping, the custom models, the village layout, exports and secrets, and the Tool Gateway's security boundaries. One test drives the real Codex app-server; it is reported as skipped (not passed) when Codex is not installed.
+61 tests cover the registries, event log, task engine, approvals, Echo autonomy, resident chat, the API, the village's event-to-visual mapping, the custom models, the village layout, exports and secrets, and the Tool Gateway's security boundaries. One test drives the real Codex app-server; it is reported as skipped (not passed) when Codex is not installed.
 
 ## Export without GitHub
 
@@ -130,6 +141,7 @@ Experimental agent tasks run in the separate **virelune-sandbox** repository, ne
 | Turn | Left-drag | Q / E |
 | Pan | Right-drag | W A S D or arrow keys |
 | Zoom | Scroll wheel | + / - |
+| Open a resident's window | Click its figure or building, or its name in the left panel | |
 | Fly to a building | Double-click it, or click a resident in the left panel | |
 | Back to the overview | | Home or 0 |
 | Show or hide panels | | P |

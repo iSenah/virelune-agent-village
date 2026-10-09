@@ -94,10 +94,47 @@ export function createServer(village: Village): http.Server {
     // Replay what the client missed, then go live.
     for (let batch = village.events.list(cursor, 1000); batch.length; batch = village.events.list(cursor, 1000)) batch.forEach(write);
     const unsub = village.events.subscribe(write);
+    // Live-only extras (streamed reply text). Not stored, not replayed; the finished reply is a real event.
+    const unsubEphemeral = village.events.subscribeEphemeral((name, data) => res.write(`event: ${name}\ndata: ${JSON.stringify(data)}\n\n`));
     const ping = setInterval(() => res.write(': keep-alive\n\n'), 15_000);
     req.on('close', () => {
       clearInterval(ping);
       unsub();
+      unsubEphemeral();
+    });
+  });
+
+  // One resident: identity, permissions, live status, tasks, approvals and the conversation.
+  route('GET', '/api/residents/:id', (_q, res, p, url) => {
+    const id = decodeURIComponent(p.id);
+    const r = village.registries.residents.get(id);
+    if (!r) throw new HttpError(404, `resident "${id}" not found`);
+    const reg = village.registries;
+    const view = village.residents().find((v) => v.id === id)!;
+    const rt = reg.runtimes.get(r.runtime);
+    const pv = reg.providers.get(r.provider);
+    const limit = Number(url.searchParams.get('limit') ?? 200) || 200;
+    send(res, 200, {
+      resident: view,
+      profile: {
+        role: r.role,
+        capabilities: r.capabilities,
+        building: r.building,
+        focus: r.focus,
+        permissions: r.permissions,
+        budget: r.budget,
+        verificationRequired: r.verification.required,
+        runtime: rt ? { id: rt.id, displayName: rt.displayName, kind: rt.kind, adapterEnabled: village.adapters.has(rt.kind) } : null,
+        provider: pv ? { id: pv.id, displayName: pv.displayName, billing: pv.billing, notes: pv.notes } : null,
+        model: r.model,
+        tools: r.tools.map((g) => {
+          const t = reg.tools.get(g.server);
+          return { server: g.server, displayName: t?.displayName ?? g.server, allow: g.allow, ask: g.ask, exclusive: t?.exclusive ?? false, classifiedTools: t ? Object.keys(t.risk).length : 0 };
+        }),
+      },
+      tasks: village.tasks.list().filter((t) => t.assignee === id),
+      approvals: village.approvals.list('pending').filter((a) => a.resident === id),
+      chat: { messages: village.chat.list(id, 'main', limit), busy: village.chat.isBusy(id), partial: village.chat.partial(id), blocker: village.chat.deliveryBlocker(id) },
     });
   });
 
@@ -116,6 +153,11 @@ export function createServer(village: Village): http.Server {
     const b = await readJson(req);
     send(res, 200, { approval: village.approvals.decide(p.id, b.decision, 'human', typeof b.reason === 'string' ? b.reason.slice(0, 1000) : '') });
   });
+  route('POST', '/api/residents/:id/chat', async (req, res, p) => {
+    const b = await readJson(req);
+    send(res, 201, { message: village.chat.send(decodeURIComponent(p.id), b.body, 'human') });
+  });
+  route('POST', '/api/residents/:id/chat/stop', (_q, res, p) => send(res, 200, { stopped: village.chat.stop(decodeURIComponent(p.id), 'human') }));
   route('PUT', '/api/settings/echo-autonomy', async (req, res) => {
     const b = await readJson(req);
     send(res, 200, { autonomy: village.settings.setEchoAutonomy(String(b.level ?? ''), 'human') });
