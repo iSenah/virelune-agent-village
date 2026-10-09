@@ -9,6 +9,8 @@ export type VillageState = {
   echo: { autonomy: string; levels: { id: string; label: string; available: boolean; description: string }[] };
   doctor: { running: boolean; results: any[] | null };
   registry: any;
+  /** Who is doing what right now, and where (Village Hall's activity record since startup). */
+  activity?: { now: string; seq: number; residents: Record<string, any> };
 };
 
 type Listener = () => void;

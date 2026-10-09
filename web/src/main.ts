@@ -2,7 +2,7 @@
 import { api, Store } from './store.ts';
 import { BUILDING_NAMES, FALLBACK_WORLD } from './village/buildings.ts';
 import { CHOICES, parseChoice, PRESETS, type GraphicsChoice } from './village/graphics.ts';
-import { deriveActivity, deriveVisuals, describeEvent } from './village/state.ts';
+import { deriveVisuals, describeEvent } from './village/state.ts';
 import type { LampInfo, VillageScene } from './village/scene.ts';
 
 import { $, el } from './dom.ts';
@@ -10,6 +10,8 @@ import { PlaceCard, type PlaceWorld } from './placeCard.ts';
 import { ResidentWindow } from './residentWindow.ts';
 
 const store = new Store();
+/** Development-only simulation (?simulate): fake activity for the 3D village only, never sent anywhere. */
+let simulation: import('./simulation.ts').Simulation | null = null;
 let scene: VillageScene | null = null;
 let selected: { building?: string; resident?: string } | null = null;
 const residentWindow = new ResidentWindow(store, new Map(BUILDING_NAMES));
@@ -80,12 +82,31 @@ async function boot() {
   }
   store.subscribe(render);
   wireControls();
+  if (scene && new URLSearchParams(location.search).has('simulate')) startSimulation();
   if (!world) await loadWorldInfo();
   try {
     await store.start();
   } catch (e) {
     $('#machine').textContent = `Cannot reach Village Hall: ${(e as Error).message}`;
   }
+}
+
+async function startSimulation() {
+  const { Simulation, mountSimulationPanel } = await import('./simulation.ts');
+  const sim = new Simulation();
+  simulation = sim;
+  const panel = mountSimulationPanel(
+    sim,
+    () => (store.state?.residents ?? []).filter((r: any) => r.appearance?.figure !== false && !r.planned),
+    () => new Map((world?.buildings ?? []).map((b) => [b.id, b.place])),
+    () => {
+      simulation = null;
+      updateScene();
+    },
+  );
+  sim.onChange = () => updateScene();
+  store.subscribe(() => panel.render());
+  updateScene();
 }
 
 function wireControls() {
@@ -154,10 +175,12 @@ function wireGraphics(sc: VillageScene) {
   let diag = prefs.get('diagnostics') === '1' || new URLSearchParams(location.search).has('stats');
   let slots = prefs.get('slotMarkers') !== '0';
   let guides = prefs.get('layoutGuides') === '1' || new URLSearchParams(location.search).has('guides');
+  let resting = prefs.get('restingMarks') !== '0';
   sc.setGraphics(parseChoice(prefs.get('graphics')));
   sc.setDiagnostics(diag);
   sc.setSlotMarkers(slots);
   sc.setLayoutGuides(guides);
+  sc.setRestingMarks(resting);
   const btn = $<HTMLButtonElement>('#graphics');
   const menu = $('#gfxmenu');
   const render = () => {
@@ -172,6 +195,7 @@ function wireGraphics(sc: VillageScene) {
         ),
       ),
       el('label', { class: 'gfx-opt' }, el('input', { type: 'checkbox', checked: diag, onchange: (e: Event) => { diag = (e.target as HTMLInputElement).checked; prefs.set('diagnostics', diag ? '1' : '0'); sc.setDiagnostics(diag); } }), el('span', {}, el('strong', {}, 'Show diagnostics'), el('span', { class: 'hint' }, 'Frame rate, draw calls, triangles and what each part of the village costs (G).'))),
+      el('label', { class: 'gfx-opt' }, el('input', { type: 'checkbox', checked: resting, onchange: (e: Event) => { resting = (e.target as HTMLInputElement).checked; prefs.set('restingMarks', resting ? '1' : '0'); sc.setRestingMarks(resting); } }), el('span', {}, el('strong', {}, 'Show resting Zzz'), el('span', { class: 'hint' }, 'Floating Zzz above connected residents who have nothing to do.'))),
       el('div', { class: 'gfx-title' }, 'Building the village'),
       el('label', { class: 'gfx-opt' }, el('input', { type: 'checkbox', checked: slots, onchange: (e: Event) => { slots = (e.target as HTMLInputElement).checked; prefs.set('slotMarkers', slots ? '1' : '0'); sc.setSlotMarkers(slots); } }), el('span', {}, el('strong', {}, 'Show building slots'), el('span', { class: 'hint' }, 'Outlines where buildings without their model yet will stand. Each hides by itself when its model arrives.'))),
       el('label', { class: 'gfx-opt' }, el('input', { type: 'checkbox', checked: guides, onchange: (e: Event) => { guides = (e.target as HTMLInputElement).checked; prefs.set('layoutGuides', guides ? '1' : '0'); sc.setLayoutGuides(guides); } }), el('span', {}, el('strong', {}, 'Show layout guides'), el('span', { class: 'hint' }, 'Walkable paths, entrances and the space above buildings kept for task indicators.'))),
@@ -305,11 +329,19 @@ function render() {
   renderTasks();
   renderApprovals();
   renderIntegrations();
-  const { activeRuns } = deriveActivity(store.events);
-  $('#truth').textContent = activeRuns.size
-    ? `${activeRuns.size} real run${activeRuns.size === 1 ? '' : 's'} in progress. Everything that looks like work comes from real events.`
+  // Who is doing what comes from Village Hall's activity record (not from replaying the event history).
+  const runCount = Object.values(s.activity?.residents ?? {}).reduce((n: number, a: any) => n + a.runs.length, 0);
+  $('#truth').textContent = runCount
+    ? `${runCount} real run${runCount === 1 ? '' : 's'} in progress. Everything that looks like work comes from real events.`
     : 'No resident is working right now. Every sign of work in the village comes from real backend events; lanterns, weather and the clock are ambient.';
-  scene?.update(s.residents, deriveVisuals(s.residents, store.events));
+  updateScene();
+}
+
+/** The village shows real activity, or, only while simulation mode is on, the simulated activity. */
+function updateScene() {
+  const s = store.state;
+  if (!s || !scene) return;
+  scene.update(s.residents, deriveVisuals(s.residents, store.events), simulation ? simulation.snapshot() : (s.activity ?? null));
 }
 
 /** Top bar: which residents may spend money right now, and an emergency stop. */
@@ -366,8 +398,7 @@ function renderResidents() {
   const elsewhere = s.residents.filter((r: any) => !known.has(r.building));
   if (elsewhere.length) groups.push({ id: '', name: 'Elsewhere', district: '', kind: '', rs: elsewhere, workers: [] });
   const pick = (building: string, resident?: string) => openResident(building, resident);
-  const { activeRuns } = deriveActivity(store.events);
-  const answering = new Set(activeRuns.values());
+  const answering = new Set(Object.entries(s.activity?.residents ?? {}).filter(([, a]: [string, any]) => a.runs.length).map(([id]) => id));
   let lastDistrict = '';
   list.replaceChildren(
     ...groups

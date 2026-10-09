@@ -197,3 +197,13 @@ test('building indicators come only from real runs, approvals and recent outcome
   assert.equal(two.get('engineering-forge')!.progress, null, 'several runs: indeterminate, no invented combined percentage');
   assert.equal(buildingIndicators({}, now).size, 0, 'nothing happening, nothing shown');
 });
+
+test('simulation mode stays in the browser: it cannot reach Village Hall or the activity feed', async () => {
+  const fs = await import('node:fs');
+  const src = fs.readFileSync(path.join(PROJECT_ROOT, 'web/src/simulation.ts'), 'utf8');
+  assert.ok(!/from '\.\/store\.ts'|\bapi\(|fetch\(|\/api\/|EventSource/.test(src), 'no requests, no store, no event stream');
+  assert.match(src, /SIMULATION · not real activity/, 'the banner says so');
+  const main = fs.readFileSync(path.join(PROJECT_ROOT, 'web/src/main.ts'), 'utf8');
+  assert.match(main, /has\('simulate'\)/, 'only with ?simulate');
+  assert.match(main, /simulation \? simulation\.snapshot\(\) : \(s\.activity \?\? null\)/, 'simulated activity only replaces what the 3D village shows');
+});

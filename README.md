@@ -114,7 +114,7 @@ Residents, runtimes, providers, tool servers and playbooks are JSON manifests in
 npm test
 ```
 
-119 tests cover the registries, event log, task engine, approvals, Echo autonomy, resident chat, the Codex, Claude and Echo adapters, paid-use authorization, the API, the village's event-to-visual mapping, the custom models and their distance versions, graphics presets, the village layout, exports and secrets, and the Tool Gateway's security boundaries. Three tests drive the real Codex CLI (gateway-only isolation, built-in tool sources switched off, refusing an unsigned village home); they are reported as skipped (not passed) when Codex is not installed. None of the tests use your Codex sign-in.
+134 tests cover the registries, event log, task engine, approvals, Echo autonomy, resident chat, the Codex, Claude and Echo adapters, paid-use authorization, the API, the village's event-to-visual mapping, the custom models and their distance versions, graphics presets, the village layout, exports and secrets, and the Tool Gateway's security boundaries. Three tests drive the real Codex CLI (gateway-only isolation, built-in tool sources switched off, refusing an unsigned village home); they are reported as skipped (not passed) when Codex is not installed. None of the tests use your Codex sign-in.
 
 ## Export without GitHub
 
@@ -175,7 +175,7 @@ The village has five districts: Founders' Square, Creative Workshops, the Artisa
 | Scholars' Heights | Gemini Observatory, Copilot Commandery | Gemini, Copilot (planned) |
 | The Forgotten Woods | DeepSeek Gothic Cottage | DeepSeek (planned) |
 
-Claude and Codex are each one resident. Their Blender and Unreal work runs through **execution profiles** (`config/profiles/`): same resident and figure, but each profile has its own runtime, tools and verification, and Claude's profiles follow Claude's paid-use switch. Planned residents have a reserved home but no provider, so they are never shown as connected and cannot receive messages. Building positions, entrances, districts and walkable roads live in `config/layout/world.json` (see [docs/world-expansion.md](docs/world-expansion.md)).
+Residents walk the village's roads in response to real activity only: home when idle (Zzz while connected), to a workplace for profile work, outside the door when waiting for your approval, with blue / amber / red / gold indicators over buildings (see [docs/v3a-resident-life.md](docs/v3a-resident-life.md); `?simulate` opens a clearly labelled development-only simulation). Claude and Codex are each one resident. Their Blender and Unreal work runs through **execution profiles** (`config/profiles/`): same resident and figure, but each profile has its own runtime, tools and verification, and Claude's profiles follow Claude's paid-use switch. Planned residents have a reserved home but no provider, so they are never shown as connected and cannot receive messages. Building positions, entrances, districts and walkable roads live in `config/layout/world.json` (see [docs/world-expansion.md](docs/world-expansion.md)).
 
 `docs/concept-art/` holds the reference sheets for the layout and the residents.
 

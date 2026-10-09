@@ -204,3 +204,9 @@ pre.diag { position: fixed; left: 50%; top: 84px; transform: translateX(-50%); z
 body.panels-hidden .panel { display: none; }
 body.panels-hidden .rwin { left: 12px; }
 .panel.left { width: 290px; }
+
+/* Simulation mode (development only): impossible to mistake for real activity. */
+.sim-banner { position: fixed; top: 0; left: 50%; transform: translateX(-50%); z-index: 20; background: repeating-linear-gradient(45deg, #7a2f8f, #7a2f8f 12px, #5e2370 12px, #5e2370 24px); color: #fff; font: 700 13px var(--sans); letter-spacing: 0.04em; padding: 6px 16px; border-radius: 0 0 10px 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.4); pointer-events: none; }
+.sim-panel { position: fixed; right: 12px; bottom: 56px; width: 330px; z-index: 9; background: var(--panel); border: 2px dashed #b06ad0; border-radius: var(--radius); padding: 10px 12px; display: grid; gap: 8px; font-size: 13px; backdrop-filter: blur(6px); }
+.sim-panel select { background: rgba(0,0,0,0.3); color: var(--ink); border: 1px solid var(--panel-edge); border-radius: 8px; padding: 3px 6px; }
+body.simulating #village { outline: 4px dashed rgba(176, 106, 208, 0.7); outline-offset: -4px; }

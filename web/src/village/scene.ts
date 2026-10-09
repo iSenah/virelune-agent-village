@@ -12,10 +12,12 @@ import { plaza } from './kit.ts';
 import { LampSet, lanternToward, type LampSpot } from './lamps.ts';
 import { instantiate, loadManifest, loadShared, modelMaterials, setLodScale, type ModelManifest } from './models.ts';
 import { grassGround, landscape, type Keepout } from './nature.ts';
+import { buildingIndicators, LIFE_CONFIG, LifeDirector, type Indicator } from './life.ts';
+import { IndicatorMark, ResidentMarks } from './lifeVisuals.ts';
 import { buildRoads } from './roads.ts';
 import type { BuildingVisual, ResidentLike, ResidentVisual } from './state.ts';
 import { buildTerrain, plateauFalls } from './terrain.ts';
-import { allNodes, allRoads, entrance, heightAt, indicatorAnchor, roadPoints, type World } from './worldModel.ts';
+import { allNodes, allRoads, entrance, heightAt, indicatorAnchor, roadPoints, type Vec3, type World } from './worldModel.ts';
 
 /** The whole-village view, and how far the camera may roam from the fountain. */
 const OVERVIEW = { pos: new THREE.Vector3(0, 185, 168), target: new THREE.Vector3(0, 0, -10) };
@@ -24,7 +26,7 @@ const BOUNDS = { minX: -100, maxX: 100, minZ: -118, maxZ: 100 };
 
 export type LampInfo = { id: string; label: string; rotation: number; custom: boolean };
 
-type Figure = { group: THREE.Group; resident: ResidentLike; home: THREE.Vector3; target: THREE.Vector3; pose: ResidentVisual['pose']; phase: number };
+type Figure = { group: THREE.Group; resident: ResidentLike; phase: number; marks: ResidentMarks };
 
 export class VillageScene {
   private renderer: THREE.WebGLRenderer;
@@ -72,11 +74,17 @@ export class VillageScene {
 
   private canvas: HTMLCanvasElement;
   private world: World;
+  /** Where each resident's one character is and what it is doing, from real activity only. */
+  private life: LifeDirector;
+  private indicatorMarks = new Map<string, IndicatorMark>();
+  private indicators = new Map<string, Indicator>();
+  private zzz = LIFE_CONFIG.zzz;
   private shadowFrame = { x: NaN, z: NaN, half: NaN };
 
   constructor(canvas: HTMLCanvasElement, world: World) {
     this.canvas = canvas;
     this.world = world;
+    this.life = new LifeDirector(world);
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(this.dpr);
     this.renderer.shadowMap.enabled = true;
@@ -146,6 +154,11 @@ export class VillageScene {
         this.camTween = null;
         this.camera.position.set(pos[0], pos[1], pos[2]);
         this.controls.target.set(target[0], target[1], target[2]);
+      };
+      // Fast-forward resident life (walking, timers) for scripted checks; a no-op on real state.
+      (window as any).__villageLifeStep = (seconds: number) => {
+        for (let t = 0; t < seconds; t += 0.05) this.life.step(0.05);
+        return Object.fromEntries([...this.life.lives].map(([id, l]) => [id, l.view()]));
       };
       // Where a world point appears on screen (pixels), for scripted picking checks.
       (window as any).__villageProject = (p: number[]) => {
@@ -486,6 +499,13 @@ export class VillageScene {
     try {
       const model = await instantiate(`character:${r.id}`, entry);
       attachCharacterModel(fig, model);
+      const marks = this.figures.get(r.id)?.marks;
+      if (marks) {
+        const vis = fig.visible;
+        fig.visible = true;
+        marks.setHeight(new THREE.Box3().setFromObject(model).getSize(new THREE.Vector3()).y + 0.2);
+        fig.visible = vis;
+      }
       setLodScale(model, this.lodFactor);
       applyCharacterStatus(fig, this.lastStatus.get(r.id) ?? r.status);
       this.shadowDirty = true;
@@ -514,7 +534,21 @@ export class VillageScene {
   }
 
   /** Apply real state. Called whenever residents or events change. */
-  update(residents: ResidentLike[], visuals: { residents: ResidentVisual[]; buildings: BuildingVisual[] }) {
+  /** Show or hide the floating Zzz above resting (connected) residents. */
+  setRestingMarks(on: boolean) {
+    this.zzz = on;
+  }
+
+  /** Real activity for a building's indicator (for tooltips and tests): what is shown and which runs/tasks. */
+  indicatorFor(building: string): Indicator | null {
+    return this.indicators.get(building) ?? null;
+  }
+
+  /**
+   * Apply real state. Called whenever residents, events or Village Hall's activity record change.
+   * `activity` decides where characters go and what the building indicators show.
+   */
+  update(residents: ResidentLike[], visuals: { residents: ResidentVisual[]; buildings: BuildingVisual[] }, activity: { now: string; residents: Record<string, any> } | null = null) {
     this.buildingVisuals = new Map(visuals.buildings.map((b) => [b.id, b]));
     this.applyBuildingVisuals();
     for (const [id, b] of this.buildings) {
@@ -548,24 +582,14 @@ export class VillageScene {
         (b.sign.material as THREE.SpriteMaterial).map!.needsUpdate = true;
       }
     }
-    const poseOf = new Map(visuals.residents.map((v) => [v.id, v]));
     // Residents with appearance.figure === false stay registered but have no figure in the village.
-    const shown = residents.filter((r) => r.appearance.figure !== false);
+    const shown = residents.filter((r) => r.appearance.figure !== false && this.buildings.has(r.building));
     for (const r of shown) {
       let f = this.figures.get(r.id);
-      const b = this.buildings.get(r.building);
-      if (!b) continue;
       if (!f) {
         const fig = buildCharacter(r.id, r.appearance.lineage);
         fig.userData.residentId = r.id;
         fig.name = `resident:${r.id}`;
-        const siblings = shown.filter((x) => x.building === r.building);
-        const idx = siblings.findIndex((x) => x.id === r.id);
-        const spread = (idx - (siblings.length - 1) / 2) * 1.5;
-        const local = new THREE.Vector3(spread * 1.2, 0.95, b.def.d / 2 + 0.35);
-        const home = b.group.localToWorld(local.clone());
-        fig.position.copy(home);
-        fig.rotation.y = b.def.rotY;
         this.scene.add(fig);
         const proxy = new THREE.Mesh(new THREE.BoxGeometry(1.3, 2.6, 1.3), this.proxyMat);
         proxy.position.y = 1.3;
@@ -573,24 +597,44 @@ export class VillageScene {
         proxy.userData.residentId = r.id;
         fig.add(proxy);
         this.pickProxies.push(proxy);
-        f = { group: fig, resident: r, home, target: home.clone(), pose: 'home', phase: Math.random() * 6 };
+        const marks = new ResidentMarks();
+        this.scene.add(marks.group);
+        f = { group: fig, resident: r, phase: Math.random() * 6, marks };
         this.figures.set(r.id, f);
         this.loadCharacterModel(fig, r);
         this.shadowDirty = true;
       }
       f.resident = r;
-      const v = poseOf.get(r.id);
-      f.pose = v?.pose ?? 'home';
-      if (f.pose === 'waiting') {
-        // walk to the plaza "porch" where approvals are handed to you
-        const ang = Math.atan2(b.def.z, b.def.x);
-        f.target.set(Math.cos(ang) * 4.6, 0.75, Math.sin(ang) * 4.6);
-      } else if (f.pose === 'working') {
-        f.target.copy(b.group.localToWorld(b.doorLocal.clone()));
-      } else f.target.copy(f.home);
       applyCharacterStatus(f.group, r.status);
       this.lastStatus.set(r.id, r.status);
-      (f.group.userData.marker as THREE.Sprite).visible = f.pose === 'waiting';
+    }
+    // One character per resident: the life director places it from the activity record (settling without any
+    // replay on first sight) and walks it along the roads when real work moves it.
+    const acts = activity?.residents ?? {};
+    this.life.sync(shown.map((r) => ({ id: r.id, home: r.building })), acts);
+    this.activity = { residents: acts, now: Date.parse(activity?.now ?? new Date().toISOString()), at: performance.now() };
+    this.refreshIndicators();
+  }
+
+  private activity: { residents: Record<string, any>; now: number; at: number } = { residents: {}, now: Date.now(), at: 0 };
+  private lastIndicatorCheck = 0;
+
+  /** Indicators from the latest activity record; completed/failed fade by Village Hall's clock, not the browser's. */
+  private refreshIndicators() {
+    const serverNow = new Date(this.activity.now + (performance.now() - this.activity.at)).toISOString();
+    this.indicators = buildingIndicators(this.activity.residents, serverNow);
+    for (const id of this.buildings.keys()) {
+      const ind = this.indicators.get(id) ?? null;
+      let mark = this.indicatorMarks.get(id);
+      if (!mark && ind) {
+        const spec = this.world.buildings.find((x) => x.id === id);
+        if (!spec) continue;
+        const a = indicatorAnchor(this.world, spec);
+        mark = new IndicatorMark(new THREE.Vector3(a[0], a[1], a[2]));
+        this.indicatorMarks.set(id, mark);
+        this.scene.add(mark.group);
+      }
+      mark?.set(ind);
     }
   }
 
@@ -803,7 +847,8 @@ export class VillageScene {
     }
     // ---- activity-driven (from real state only) ----
     for (const [id, b] of this.buildings) {
-      const busy = this.buildingVisuals.get(id)?.busy ?? false;
+      // Chimney smoke and the forge gear only while a real run is active in this building.
+      const busy = this.indicators.get(id)?.color === 'blue';
       for (const s of b.smoke) {
         s.visible = busy; // no draw call while idle
         if (!busy) continue;
@@ -815,24 +860,37 @@ export class VillageScene {
       const gear = b.group.userData.gear as THREE.Object3D | undefined;
       if (gear && busy) gear.rotation.z += dt * 1.2;
     }
-    for (const f of this.figures.values()) {
-      const pos = f.group.position;
-      const d = f.target.clone().sub(pos);
-      d.y = 0;
-      const dist = d.length();
-      if (dist > 0.05) {
-        const step = Math.min(dist, dt * 3.2);
-        pos.add(d.normalize().multiplyScalar(step));
-        f.group.rotation.y = Math.atan2(d.x, d.z);
-        pos.y = f.target.y + Math.abs(Math.sin(t * 9)) * 0.08; // walking bob
+    this.life.step(dt);
+    for (const [id, f] of this.figures) {
+      const life = this.life.lives.get(id);
+      if (!life) continue;
+      const v = life.view();
+      const g = f.group;
+      if (g.visible !== v.visible) {
+        g.visible = v.visible;
         this.shadowDirty = true;
-      } else if (f.resident.status === 'connected') {
-        // idle sway is ambient; it only signals that the resident is connected (a real status)
-        f.group.rotation.z = Math.sin(t * 1.4 + f.phase) * 0.03;
-        if (f.pose === 'working') pos.y = f.target.y + Math.abs(Math.sin(t * 5 + f.phase)) * 0.06;
       }
-      const marker = f.group.userData.marker as THREE.Sprite;
+      const [x, y, z] = v.position as Vec3;
+      // walking bob while moving; idle sway only signals a real connection
+      const bob = v.walking ? Math.abs(Math.sin(t * 9)) * 0.08 : 0;
+      if (g.position.x !== x || g.position.z !== z || v.walking) this.shadowDirty = true;
+      g.position.set(x, y + bob, z);
+      g.rotation.y = v.heading;
+      g.rotation.z = !v.walking && f.resident.status === 'connected' ? Math.sin(t * 1.4 + f.phase) * 0.03 : 0;
+      const marker = g.userData.marker as THREE.Sprite;
+      marker.visible = v.state === 'awaiting_approval';
       if (marker.visible) marker.scale.setScalar(0.8 + Math.sin(t * 4) * 0.12);
+      f.marks.group.position.set(x, y, z);
+      f.marks.group.visible = v.visible;
+      f.marks.update(t, {
+        zzz: this.zzz && v.state === 'idle_home' && f.resident.status === 'connected',
+        outcome: v.state === 'task_completed' ? 'completed' : v.state === 'task_failed' ? 'failed' : null,
+      });
+    }
+    for (const m of this.indicatorMarks.values()) m.update(t);
+    if (now - this.lastIndicatorCheck > 5000) {
+      this.lastIndicatorCheck = now;
+      this.refreshIndicators(); // lets a gold or red indicator fade on time
     }
     if (this.shadowDirty) {
       this.renderer.shadowMap.needsUpdate = true;
