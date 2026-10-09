@@ -9,6 +9,7 @@ import { PROJECT_ROOT } from '../server/lib/config.ts';
 import { loadRegistries } from '../server/lib/registry.ts';
 import { loadWorld } from '../server/lib/world.ts';
 import { allNodes, allRoads, buildingRotY, edgeDistance, entrance, footprintRadius, heightAt, riverRadius, route, validateWorld, type World } from '../web/src/village/worldModel.ts';
+import { FALLBACK_WORLD, PROCEDURAL_BODIES } from '../web/src/village/buildings.ts';
 import { makeVillage } from './helpers.ts';
 
 const reg = loadRegistries(path.join(PROJECT_ROOT, 'config'));
@@ -171,4 +172,16 @@ test('GET /api/world: entrances, indicator anchors, homes and workplaces from th
     server.close();
     village.close();
   }
+});
+
+test('new building slots never get a stand-in house, and their markers retire when a model is listed', () => {
+  // Only the original seven have procedural bodies; every other slot shows a development marker instead.
+  assert.deepEqual([...PROCEDURAL_BODIES].sort(), ['blender-house', 'engineering-forge', 'library', 'post-office', 'town-hall', 'unreal-studio', 'unreal-workshop']);
+  const src = fs.readFileSync(path.join(PROJECT_ROOT, 'web/src/village/buildings.ts'), 'utf8');
+  assert.ok(!/\} else \{\s*const h = house\(/.test(src), 'no catch-all generic house for unknown buildings');
+  assert.match(src, /if \(b\.marker\) b\.marker\.visible = false/, 'attaching the real model hides the slot marker');
+  for (const x of world.buildings.filter((b) => !PROCEDURAL_BODIES.has(b.id))) assert.ok(x.modelNote, `${x.id}: the marker says what will stand here`);
+  // The fallback (used only when the layout cannot be read) is Founders' Square as it always was, and valid.
+  assert.deepEqual(validateWorld(FALLBACK_WORLD), []);
+  for (const fb of FALLBACK_WORLD.buildings) assert.deepEqual([fb.x, fb.z], [b(fb.id).x, b(fb.id).z]);
 });

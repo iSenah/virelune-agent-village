@@ -7,13 +7,13 @@ import { house, mat, mesh, PALETTE, plinth, steps, tower } from './kit.ts';
 import { buildingRotY, groundY, type BuildingKind, type BuildingSpec, type World } from './worldModel.ts';
 
 /** title/subtitle/tagline are the signboard lines; place is the building's name in the resident list. */
-export type BuildingDef = { id: string; place: string; title: string; subtitle: string; tagline: string; x: number; y: number; z: number; rotY: number; w: number; d: number; kind: BuildingKind; district: string; modelNote?: string };
+export type BuildingDef = { id: string; place: string; title: string; subtitle: string; tagline: string; x: number; y: number; z: number; rotY: number; w: number; d: number; kind: BuildingKind; district: string; modelNote?: string; indicatorHeight: number };
 
 /** The buildings that have a procedural stand-in body. Every other slot waits for its real model. */
 export const PROCEDURAL_BODIES = new Set(['town-hall', 'library', 'unreal-workshop', 'engineering-forge', 'blender-house', 'unreal-studio', 'post-office']);
 
 export function defFromSpec(world: World, b: BuildingSpec): BuildingDef {
-  return { id: b.id, place: b.place, title: b.title, subtitle: b.subtitle, tagline: b.tagline, x: b.x, y: groundY(world, b), z: b.z, rotY: buildingRotY(b), w: b.w, d: b.d, kind: b.kind, district: b.district, modelNote: b.modelNote };
+  return { id: b.id, place: b.place, title: b.title, subtitle: b.subtitle, tagline: b.tagline, x: b.x, y: groundY(world, b), z: b.z, rotY: buildingRotY(b), w: b.w, d: b.d, kind: b.kind, district: b.district, modelNote: b.modelNote, indicatorHeight: b.indicatorHeight ?? 14 };
 }
 
 const F = (id: string, place: string, title: string, subtitle: string, tagline: string, x: number, z: number, w: number, d: number): BuildingSpec => ({ id, place, title, subtitle, tagline, district: 'founders', kind: 'residence', x, z, w, d });
@@ -68,7 +68,84 @@ export type BuildingHandle = {
   body: THREE.Group;
   /** The custom GLB model once loaded. */
   model: THREE.Group | null;
+  /** Development marker for a building slot whose model has not arrived yet (null for the original seven). */
+  marker: THREE.Group | null;
 };
+
+const KIND_COLOR: Record<BuildingKind, number> = { residence: 0x5b8cff, workplace: 0xe0a030, service: 0xb070ff };
+const KIND_WORD: Record<BuildingKind, string> = { residence: 'Home', workplace: 'Workplace', service: 'Service' };
+
+/** Text laid flat on the plinth: what will stand here. Reads upright from the front of the slot. */
+function slotLabel(def: BuildingDef, color: number): THREE.Mesh {
+  const c = document.createElement('canvas');
+  c.width = 512;
+  c.height = 192;
+  const ctx = c.getContext('2d')!;
+  ctx.fillStyle = 'rgba(20,16,12,0.55)';
+  ctx.beginPath();
+  ctx.roundRect(6, 6, 500, 180, 22);
+  ctx.fill();
+  ctx.strokeStyle = `#${color.toString(16).padStart(6, '0')}`;
+  ctx.setLineDash([18, 12]);
+  ctx.lineWidth = 5;
+  ctx.stroke();
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#f4ead6';
+  ctx.font = '600 34px system-ui, "Segoe UI", sans-serif';
+  ctx.fillText(`${KIND_WORD[def.kind]} slot · model coming`, 256, 72);
+  ctx.font = '32px Georgia, "Times New Roman", serif';
+  ctx.fillStyle = '#d8ccb2';
+  const note = def.modelNote ?? def.place;
+  ctx.fillText(note.length > 30 ? `${note.slice(0, 29)}…` : note, 256, 128);
+  ctx.font = '24px system-ui, "Segoe UI", sans-serif';
+  ctx.fillStyle = '#a99c84';
+  ctx.fillText('Development marker', 256, 166);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  const w = Math.min(def.w - 1.2, 8);
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, (w * 192) / 512).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false }));
+  m.position.set(0, 1.06, def.d / 2 - (w * 192) / 1024 - 0.5);
+  m.renderOrder = 3;
+  return m;
+}
+
+/**
+ * A development-only marker for a slot without its model: a see-through volume of roughly the final size, a dashed
+ * outline, an arrow at the entrance and a label saying what will stand here. Never a stand-in house.
+ */
+function slotMarker(def: BuildingDef): THREE.Group {
+  const g = new THREE.Group();
+  g.name = 'slot-marker';
+  const color = KIND_COLOR[def.kind];
+  const top = 0.95;
+  const h = Math.max(6, def.indicatorHeight - 5);
+  const box = new THREE.BoxGeometry(def.w - 0.8, h, def.d - 0.8);
+  const vol = new THREE.Mesh(box, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.22, depthWrite: false }));
+  vol.position.y = top + h / 2;
+  vol.renderOrder = 2;
+  g.add(vol);
+  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(box), new THREE.LineDashedMaterial({ color, dashSize: 0.7, gapSize: 0.45 }));
+  edges.position.copy(vol.position);
+  edges.computeLineDistances();
+  g.add(edges);
+  // arrow on the ground in front of the steps, pointing in through the door
+  const arrow = new THREE.Shape();
+  arrow.moveTo(0, -0.9);
+  arrow.lineTo(0.8, 0.3);
+  arrow.lineTo(0.28, 0.3);
+  arrow.lineTo(0.28, 0.9);
+  arrow.lineTo(-0.28, 0.9);
+  arrow.lineTo(-0.28, 0.3);
+  arrow.lineTo(-0.8, 0.3);
+  arrow.closePath();
+  const a = new THREE.Mesh(new THREE.ShapeGeometry(arrow).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.75, depthWrite: false }));
+  a.position.set(0, 0.52, def.d / 2 + 2.6);
+  a.renderOrder = 3;
+  g.add(a);
+  g.add(slotLabel(def, color));
+  return g;
+}
 
 function windowMaterial(): THREE.MeshStandardMaterial {
   return new THREE.MeshStandardMaterial({ color: PALETTE.glass, emissive: PALETTE.glow, emissiveIntensity: 0, roughness: 0.4, flatShading: true });
@@ -278,6 +355,13 @@ export function buildBuilding(def: BuildingDef): BuildingHandle {
     signY = 8.2;
   }
 
+  let marker: THREE.Group | null = null;
+  if (!PROCEDURAL_BODIES.has(def.id)) {
+    marker = slotMarker(def);
+    group.add(marker);
+    signY = Math.max(6, def.indicatorHeight - 5) + 3.2;
+  }
+
   // front steps (ambient). The lamp posts are placed by the scene's lamp set (see plinthLampSpots).
   const st = steps(2.4, 3);
   st.position.set(0, 0.05, def.d / 2 + 1.2);
@@ -304,7 +388,7 @@ export function buildBuilding(def: BuildingDef): BuildingHandle {
       smoke.push(s);
     }
   }
-  return { def, group, windowMat, accentMats, light, sign: sprite, signCanvas: canvas, chimney, doorLocal: new THREE.Vector3(0, 0.95, def.d / 2 + 0.6), smoke, body, model: null };
+  return { def, group, windowMat, accentMats, light, sign: sprite, signCanvas: canvas, chimney, doorLocal: new THREE.Vector3(0, 0.95, def.d / 2 + 0.6), smoke, body, model: null, marker };
 }
 
 /**
@@ -318,6 +402,7 @@ export function attachBuildingModel(b: BuildingHandle, model: THREE.Group) {
   b.group.add(model);
   b.body.visible = false;
   b.model = model;
+  if (b.marker) b.marker.visible = false; // the real model has arrived
   const size = model.userData.fittedSize as THREE.Vector3;
   b.sign.position.y = top + size.y + 2.4;
   // Smoke rises from near the top of the roof line; it only shows while a real run is active.

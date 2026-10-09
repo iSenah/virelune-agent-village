@@ -15,7 +15,7 @@ import { grassGround, landscape, type Keepout } from './nature.ts';
 import { buildRoads } from './roads.ts';
 import type { BuildingVisual, ResidentLike, ResidentVisual } from './state.ts';
 import { buildTerrain, plateauFalls } from './terrain.ts';
-import { heightAt, type World } from './worldModel.ts';
+import { allNodes, allRoads, entrance, heightAt, indicatorAnchor, roadPoints, type World } from './worldModel.ts';
 
 /** The whole-village view, and how far the camera may roam from the fountain. */
 const OVERVIEW = { pos: new THREE.Vector3(0, 185, 168), target: new THREE.Vector3(0, 0, -10) };
@@ -252,6 +252,62 @@ export class VillageScene {
     this.shadowDirty = true;
   }
 
+  private slotMarkers = true;
+  private guides: THREE.Group | null = null;
+
+  /** Show or hide the development markers on building slots whose models have not arrived yet. */
+  setSlotMarkers(on: boolean) {
+    this.slotMarkers = on;
+    for (const b of this.buildings.values()) if (b.marker) b.marker.visible = on && !b.model;
+  }
+
+  /**
+   * Layout guides for development (off by default): every entrance, the space reserved above each building for
+   * task indicators, and the walkable paths residents will use in V3, all straight from the layout data.
+   */
+  setLayoutGuides(on: boolean) {
+    if (on && !this.guides) this.guides = this.buildGuides();
+    if (this.guides) this.guides.visible = on;
+  }
+
+  private buildGuides(): THREE.Group {
+    const g = new THREE.Group();
+    g.name = 'guides';
+    const w = this.world;
+    const nodes = allNodes(w);
+    const pts: number[] = [];
+    for (const road of allRoads(w)) {
+      const p = roadPoints(w, road, nodes);
+      for (let i = 1; i < p.length; i++) pts.push(p[i - 1][0], p[i - 1][1] + 0.7, p[i - 1][2], p[i][0], p[i][1] + 0.7, p[i][2]);
+    }
+    const paths = new THREE.BufferGeometry();
+    paths.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+    const walk = new THREE.LineSegments(paths, new THREE.LineBasicMaterial({ color: 0x5fe0ff, transparent: true, opacity: 0.9, depthTest: false }));
+    walk.renderOrder = 20;
+    g.add(walk);
+    const ringMat = new THREE.MeshBasicMaterial({ color: 0x5fe0ff, transparent: true, opacity: 0.9, depthTest: false });
+    const anchorMat = new THREE.MeshBasicMaterial({ color: 0xffd36b, transparent: true, opacity: 0.9, depthTest: false });
+    const stems: number[] = [];
+    for (const b of w.buildings) {
+      const e = entrance(w, b);
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.9, 0.09, 6, 24).rotateX(Math.PI / 2), ringMat);
+      ring.position.set(e[0], e[1] + 0.7, e[2]);
+      ring.renderOrder = 21;
+      g.add(ring);
+      const a = indicatorAnchor(w, b);
+      const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.5), anchorMat);
+      gem.position.set(a[0], a[1], a[2]);
+      gem.renderOrder = 21;
+      g.add(gem);
+      stems.push(a[0], a[1] - 0.5, a[2], a[0], a[1] - 3, a[2]);
+    }
+    const sg = new THREE.BufferGeometry();
+    sg.setAttribute('position', new THREE.Float32BufferAttribute(stems, 3));
+    g.add(new THREE.LineSegments(sg, new THREE.LineBasicMaterial({ color: 0xffd36b, transparent: true, opacity: 0.7, depthTest: false })));
+    this.scene.add(g);
+    return g;
+  }
+
   /** Choose a graphics preset, or 'auto' (starts at High and steps down only if frames stay slow). */
   setGraphics(choice: GraphicsChoice) {
     this.graphicsChoice = choice;
@@ -405,7 +461,7 @@ export class VillageScene {
       if (!entry) continue;
       instantiate(id, entry)
         .then((model) => {
-          attachBuildingModel(b, model);
+          attachBuildingModel(b, model); // also retires the slot's development marker
           setLodScale(model, this.lodFactor);
           b.group.userData.modelMats = modelMaterials(model).map((m) => ({ mat: m, base: m.color.clone() }));
           this.applyBuildingVisuals();

@@ -6,6 +6,7 @@ import { deriveActivity, deriveVisuals, describeEvent } from './village/state.ts
 import type { LampInfo, VillageScene } from './village/scene.ts';
 
 import { $, el } from './dom.ts';
+import { PlaceCard, type PlaceWorld } from './placeCard.ts';
 import { ResidentWindow } from './residentWindow.ts';
 
 const store = new Store();
@@ -24,14 +25,29 @@ async function loadWorldInfo() {
     world = null; // the panel falls back to the built-in list
   }
 }
-residentWindow.onClose = () => {
+const placeCard = new PlaceCard(store, () => world as PlaceWorld | null);
+residentWindow.onClose = placeCard.onClose = () => {
   selected = null;
   scene?.overview();
   renderResidents();
 };
+placeCard.onResident = (id) => openResident(undefined, id);
+placeCard.onFocus = (id) => scene?.focusBuilding(id);
 
 /** Open the resident window (and fly the camera there) for a building or a specific resident. */
 function openResident(building?: string, resident?: string) {
+  // A building nobody lives in (a shared workplace or a service slot) opens its place card instead.
+  const livesHere = (store.state?.residents ?? []).some((r: any) => r.building === building);
+  if (!resident && building && !livesHere) {
+    residentWindow.hide();
+    if (placeCard.open(building)) {
+      selected = { building };
+      scene?.focusBuilding(building);
+      renderResidents();
+    }
+    return;
+  }
+  placeCard.hide();
   residentWindow.open(building, resident);
   selected = { building: residentWindow.currentBuilding ?? building, resident: residentWindow.currentResident ?? resident };
   const b = resident ? store.state?.residents.find((r: any) => r.id === resident)?.building : building;
@@ -135,8 +151,12 @@ const prefs = {
 /** Graphics menu: Auto / High / Medium / Low, and the diagnostics display (G). */
 function wireGraphics(sc: VillageScene) {
   let diag = prefs.get('diagnostics') === '1' || new URLSearchParams(location.search).has('stats');
+  let slots = prefs.get('slotMarkers') !== '0';
+  let guides = prefs.get('layoutGuides') === '1' || new URLSearchParams(location.search).has('guides');
   sc.setGraphics(parseChoice(prefs.get('graphics')));
   sc.setDiagnostics(diag);
+  sc.setSlotMarkers(slots);
+  sc.setLayoutGuides(guides);
   const btn = $<HTMLButtonElement>('#graphics');
   const menu = $('#gfxmenu');
   const render = () => {
@@ -151,6 +171,9 @@ function wireGraphics(sc: VillageScene) {
         ),
       ),
       el('label', { class: 'gfx-opt' }, el('input', { type: 'checkbox', checked: diag, onchange: (e: Event) => { diag = (e.target as HTMLInputElement).checked; prefs.set('diagnostics', diag ? '1' : '0'); sc.setDiagnostics(diag); } }), el('span', {}, el('strong', {}, 'Show diagnostics'), el('span', { class: 'hint' }, 'Frame rate, draw calls, triangles and what each part of the village costs (G).'))),
+      el('div', { class: 'gfx-title' }, 'Building the village'),
+      el('label', { class: 'gfx-opt' }, el('input', { type: 'checkbox', checked: slots, onchange: (e: Event) => { slots = (e.target as HTMLInputElement).checked; prefs.set('slotMarkers', slots ? '1' : '0'); sc.setSlotMarkers(slots); } }), el('span', {}, el('strong', {}, 'Show building slots'), el('span', { class: 'hint' }, 'Outlines where buildings without their model yet will stand. Each hides by itself when its model arrives.'))),
+      el('label', { class: 'gfx-opt' }, el('input', { type: 'checkbox', checked: guides, onchange: (e: Event) => { guides = (e.target as HTMLInputElement).checked; prefs.set('layoutGuides', guides ? '1' : '0'); sc.setLayoutGuides(guides); } }), el('span', {}, el('strong', {}, 'Show layout guides'), el('span', { class: 'hint' }, 'Walkable paths, entrances and the space above buildings kept for task indicators.'))),
       el('div', { class: 'hint' }, 'Presets change only rendering cost. Every building, resident and landscape feature stays.'),
     );
   };
@@ -301,20 +324,21 @@ function renderResidents() {
   const districtName = new Map((world?.districts ?? []).map((d) => [d.id, d.name]));
   const known = new Set(places.map((b) => b.id));
   const names = new Map(s.residents.map((r: any) => [r.id, r.displayName]));
-  const groups: { id: string; name: string; district: string; rs: any[]; workers: string[] }[] = places.map((b) => ({ id: b.id, name: b.place, district: b.district, rs: s.residents.filter((r: any) => r.building === b.id), workers: [...new Set(b.workers.map((w) => names.get(w.resident) ?? w.resident))] }));
+  const groups: { id: string; name: string; district: string; kind: string; rs: any[]; workers: string[] }[] = places.map((b) => ({ id: b.id, name: b.place, district: b.district, kind: b.kind, rs: s.residents.filter((r: any) => r.building === b.id), workers: [...new Set(b.workers.map((w) => names.get(w.resident) ?? w.resident))] }));
   const elsewhere = s.residents.filter((r: any) => !known.has(r.building));
-  if (elsewhere.length) groups.push({ id: '', name: 'Elsewhere', district: '', rs: elsewhere, workers: [] });
+  if (elsewhere.length) groups.push({ id: '', name: 'Elsewhere', district: '', kind: '', rs: elsewhere, workers: [] });
   const pick = (building: string, resident?: string) => openResident(building, resident);
   const { activeRuns } = deriveActivity(store.events);
   const answering = new Set(activeRuns.values());
   let lastDistrict = '';
   list.replaceChildren(
     ...groups
-      .filter((g) => g.rs.length || g.workers.length)
+      .filter((g) => g.rs.length || g.workers.length || g.kind === 'service')
       .flatMap((g) => [
         ...(g.district && g.district !== lastDistrict && districtName.size ? [el('li', { class: 'district' }, districtName.get((lastDistrict = g.district)) ?? g.district)] : []),
         el('li', { class: `group${selected?.building === g.id && !selected?.resident ? ' selected' : ''}`, onclick: () => g.id && pick(g.id) }, g.name),
         ...(g.workers.length ? [el('li', { class: 'workers', onclick: () => pick(g.id) }, el('span', { class: 'why' }, `Shared workspace · ${g.workers.join(' and ')} work here through their profiles`))] : []),
+        ...(g.kind === 'service' && !g.rs.length ? [el('li', { class: 'workers', onclick: () => pick(g.id) }, el('span', { class: 'why' }, 'Service building · not connected · model coming'))] : []),
         ...[...g.rs]
           .sort((a, b) => Number(b.focus) - Number(a.focus) || a.displayName.localeCompare(b.displayName))
           .map((r) =>

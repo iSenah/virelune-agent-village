@@ -94,6 +94,11 @@ table.checks td { padding: 4px 4px; border-bottom: 1px solid rgba(255, 255, 255,
 
 .rwin { position: fixed; left: 316px; top: 86px; bottom: 56px; width: 450px; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--panel-edge); border-radius: var(--radius); padding: 12px 14px; z-index: 6; backdrop-filter: blur(6px); }
 .rwin[hidden] { display: none; }
+.rwin.place { bottom: auto; max-height: calc(100vh - 150px); overflow: auto; }
+.rw-crest.kind-workplace { background: #e0b04e; }
+.rw-crest.kind-service { background: #c896ff; }
+.rw-crest.kind-residence { background: #8fb4ff; }
+.btn.small { padding: 3px 10px; font-size: 12px; }
 .rw-head { display: flex; align-items: center; gap: 10px; }
 .rw-crest { width: 12px; height: 34px; border-radius: 6px; flex: none; }
 .rw-title { flex: 1; min-width: 0; }

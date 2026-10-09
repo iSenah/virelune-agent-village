@@ -42,3 +42,33 @@ The 3D village is now built from the layout that Village Hall sends (`GET /api/w
 - **New slots get no stand-in house.** Until their models arrive they show only a plinth and sign (a development marker follows in milestone 4).
 
 Cost (overview, all models loaded): High 221 draws / 973k triangles, Medium 937k, Low 901k (Low also has no shadows and 44% fewer pixels). Before the expansion it was 205 draws / 857k. The 36 lamp posts (12k triangles each) are now the largest item at 434k; milestone 6 looks at them.
+
+## Milestone 4: building slots and future residents (done)
+
+Five slots wait for their models: Tripo Stable, Runway Cinema, Gemini Observatory, Copilot Commandery and DeepSeek Gothic Cottage. None of them gets a stand-in house.
+
+- **Development marker**: each slot shows the following, coloured by kind (blue for homes, gold for workplaces, purple for services):
+  - a see-through volume of roughly the final size, with a dashed outline;
+  - an arrow at the entrance;
+  - a label on the plinth naming what will stand there, from `modelNote` in the layout.
+
+  **Graphics → Show building slots** hides all markers. A slot's marker also hides by itself once its model loads.
+- **Layout guides** (**Graphics → Show layout guides**, or `?guides`; off by default) draw, straight from the layout data:
+  - the walkable paths (cyan);
+  - every entrance (rings);
+  - the anchor above each building kept for future task indicators (gold).
+- **Place card**: clicking a building nobody lives in (Blender House, UE Studio, Tripo Stable, Runway Cinema) opens a card instead of doing nothing. It shows:
+  - the district;
+  - who works there, through which profiles, with buttons to open those residents;
+  - the connection state, in plain words (service slots: "Not connected. No integration exists for this building yet");
+  - the coming model, which way the entrance faces, the walking distance from the fountain, and the space reserved above.
+- The resident list shows service buildings under their district as "Service building · not connected · model coming".
+- Future residents (Gemini, Copilot, DeepSeek) were registered as planned in milestone 2: homes reserved, no provider, no figure, chat closed with an explanation.
+
+### When a final model arrives
+
+1. Put the file at `web/assets/models/buildings/<building id>.glb` (optionally a lighter copy under `lod/`, as for the others).
+2. Add it to `web/assets/models/manifest.json` under `buildings` with its `width`.
+3. If its footprint or door differs, adjust `x`, `z`, `w`, `d` or `face` for that building in `config/layout/world.json` and run `npm test`. The layout checks catch overlaps, unreachable entrances, and buildings hanging off the Heights.
+
+The marker disappears on its own; the plinth, sign, lamps and road stay.

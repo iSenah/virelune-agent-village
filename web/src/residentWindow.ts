@@ -64,12 +64,17 @@ export class ResidentWindow {
   }
 
   close() {
+    this.hide();
+    this.onClose();
+  }
+
+  /** Close without telling the caller (used when another window takes its place). */
+  hide() {
     if (this.id && this.textarea) this.drafts.set(this.id, this.textarea.value);
     this.id = null;
     this.building = null;
     this.detail = null;
     this.root.hidden = true;
-    this.onClose();
   }
 
   private switchTo(id: string) {
