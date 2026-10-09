@@ -35,6 +35,10 @@ export class ResidentWindow {
     store.onEphemeral((name, data) => name === 'chat.delta' && this.handleDelta(data));
   }
 
+  setPlaces(places: Map<string, string>) {
+    this.places = places;
+  }
+
   get currentResident() {
     return this.id;
   }
@@ -301,6 +305,43 @@ export class ResidentWindow {
     );
   }
 
+  /** Specialist execution profiles (e.g. Claude in Blender): same resident, own runtime, tools and verification. */
+  private profilesBlock(): HTMLElement[] {
+    const d = this.detail;
+    const profiles = (d.profiles ?? []) as any[];
+    if (!profiles.length) return [];
+    const name = d.resident.displayName;
+    return [
+      el('h4', {}, 'Specialist profiles'),
+      el('p', { class: 'hint' }, `Ways ${name} works at the shared workplaces. Still one ${name}: no separate figure or chat. Each profile has its own runtime, tools and verification; paid use follows ${name}'s switch.`),
+      el('ul', { class: 'rw-profiles' },
+        ...profiles.map((p) =>
+          el('li', {},
+            el('div', {}, el('strong', {}, p.displayName), ' ', el('span', { class: `badge ${p.status === 'connected' ? 'connected' : p.status === 'untested' ? 'untested' : 'unavailable'}` }, p.status === 'untested' ? 'not checked' : p.status)),
+            el('div', { class: 'hint' }, `Works at ${this.places.get(p.workplace) ?? p.workplace} · ${p.runtime} · tools: ${p.tools.join(', ') || 'none'}`),
+            p.status === 'connected' ? null : el('div', { class: 'hint' }, p.reasons[0] ?? ''),
+            p.archivedMessages ? this.archiveViewer(p) : null,
+          ),
+        ),
+      ),
+    ];
+  }
+
+  /** Read-only conversation kept from when this profile was a separate resident. */
+  private archiveViewer(p: any): HTMLElement {
+    const box = el('details', { class: 'rw-archive' }, el('summary', {}, `Earlier conversation (${p.archivedMessages} messages, read-only)`));
+    box.addEventListener('toggle', async () => {
+      if (!(box as HTMLDetailsElement).open || box.querySelector('ul')) return;
+      try {
+        const { messages } = await api('GET', `/api/profiles/${encodeURIComponent(p.id)}/history`);
+        box.append(el('ul', { class: 'rw-msgs archived' }, ...messages.map((m: any) => el('li', { class: `msg ${m.role} ${m.status}` }, el('div', { class: 'bubble' }, m.body || '(empty)'), el('div', { class: 'meta' }, new Date(m.createdAt).toLocaleString(), m.reason ? ` · ${m.reason}` : '')))));
+      } catch (e) {
+        box.append(el('div', { class: 'rw-notice' }, (e as Error).message));
+      }
+    });
+    return box;
+  }
+
   /** Provider, billing method, whether actions may cost money, and the Allow paid use switch. */
   private billingBlock(): HTMLElement {
     const d = this.detail;
@@ -382,6 +423,7 @@ export class ResidentWindow {
         row('Budget', `$${p.budget.perTaskUsd} per task · $${p.budget.dailyUsd} per day · ${p.budget.maxTurns} turns`),
         row('Verification', p.focus ? 'Focus resident: connects when its checks pass' : 'Kept disconnected until its own verification test passes'),
       ),
+      ...this.profilesBlock(),
       el('h4', {}, 'Tools'),
       p.tools.length
         ? el('table', { class: 'checks' },

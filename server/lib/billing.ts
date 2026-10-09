@@ -56,15 +56,27 @@ export class BillingGuard {
     }
   }
 
+  /** A resident or an execution profile. Profiles share their resident's switch. */
+  private principal(id: string) {
+    const reg = this.registries();
+    return reg.residents.get(id) ?? reg.principals?.get(id);
+  }
+
+  /** Whose switch decides: the resident itself, or the resident a profile belongs to. */
+  switchOwner(id: string): string {
+    return this.principal(id)?.parent ?? id;
+  }
+
   info(residentId: string): BillingInfo {
     const reg = this.registries();
-    const r = reg.residents.get(residentId);
+    const r = this.principal(residentId);
     if (!r) throw new NotFoundError(`resident "${residentId}" not found`);
+    if (r.planned && !r.provider) return { kind: 'none', providerName: 'No provider yet', paid: false, allowed: false, changedAt: null, changedBy: null, charges: 'No. Not connected to any provider yet.' };
     const pv = reg.providers.get(r.provider);
     const kind = pv?.billing ?? 'unknown';
     // Unknown billing is treated as paid: fail safe.
     const paid = kind !== 'subscription' && kind !== 'free-local';
-    const s = this.stored(residentId);
+    const s = this.stored(this.switchOwner(residentId));
     const allowed = paid && s?.allowed === true;
     const providerName = pv?.displayName ?? r.provider;
     const charges = !paid
@@ -81,8 +93,9 @@ export class BillingGuard {
   blocker(residentId: string): string | null {
     const b = this.info(residentId);
     if (!b.paid || b.allowed) return null;
-    const name = this.registries().residents.get(residentId)!.displayName;
-    return `Paid use is off for ${name}. ${name} uses the ${b.providerName}, which bills per use. Allow paid use in ${name}'s Profile to let it reply.`;
+    const owner = this.principal(this.switchOwner(residentId))!.displayName;
+    const name = this.principal(residentId)!.displayName;
+    return `Paid use is off for ${owner}. ${name} uses the ${b.providerName}, which bills per use. Allow paid use in ${owner}'s Profile to let it reply.`;
   }
 
   /**
@@ -93,7 +106,7 @@ export class BillingGuard {
     const why = this.blocker(residentId);
     if (why) {
       const b = this.info(residentId);
-      this.events.append({ type: 'billing.request_denied', actor: 'system', payload: { resident: residentId, provider: this.registries().residents.get(residentId)!.provider, billing: b.kind, purpose, reason: why, ...ref } });
+      this.events.append({ type: 'billing.request_denied', actor: 'system', payload: { resident: residentId, switchOwner: this.switchOwner(residentId), provider: this.principal(residentId)!.provider, billing: b.kind, purpose, reason: why, ...ref } });
     }
     return why;
   }
@@ -110,6 +123,8 @@ export class BillingGuard {
    */
   set(residentId: string, allowed: unknown, acknowledge: unknown, actor = 'human'): BillingInfo {
     if (typeof allowed !== 'boolean') throw new ValidationError('allowed must be true or false');
+    const p = this.principal(residentId);
+    if (p?.parent) throw new ValidationError(`${p.displayName} follows ${this.principal(p.parent)!.displayName}'s paid-use switch.`);
     const before = this.info(residentId);
     if (!before.paid) throw new ValidationError(`${this.registries().residents.get(residentId)!.displayName} is not billed per use, so there is no paid-use switch.`);
     if (allowed && acknowledge !== true) throw new ValidationError('Allowing paid use needs acknowledge: true (you confirm that replies will be billed to your provider account).');

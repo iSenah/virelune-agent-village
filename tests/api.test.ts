@@ -26,8 +26,9 @@ test('health and state load with zero integrations', async () => {
   const health = await (await fetch(`${base}/api/health`)).json();
   assert.equal(health.ok, true);
   const state = await (await fetch(`${base}/api/state`)).json();
-  assert.equal(state.residents.length, 9);
-  assert.ok(state.residents.every((r: any) => r.status === 'untested'), 'no resident may claim a connection without checks');
+  assert.equal(state.residents.length, 8, 'five active residents and three planned ones');
+  assert.ok(state.residents.every((r: any) => r.status !== 'connected'), 'no resident may claim a connection without checks');
+  assert.ok(state.residents.every((r: any) => (r.planned ? r.status === 'disconnected' : r.status === 'untested')), 'planned residents have nothing to check');
   assert.equal(state.echo.autonomy, 'supervised');
   assert.deepEqual(state.echo.levels.map((l: any) => [l.id, l.available]), [['supervised', true], ['assisted', false], ['autonomous', false]]);
   assert.deepEqual(state.registry.errors, []);

@@ -305,10 +305,11 @@ test('the adapters cannot be pointed elsewhere from .env, and only the main resi
     const rt = (id: string) => village.registries.runtimes.get(village.registries.residents.get(id)!.runtime)!.kind;
     assert.equal(rt('claude'), 'anthropic-messages');
     assert.equal(rt('echo'), 'openai-responses');
-    assert.equal(rt('claude-blender'), 'claude-agent-sdk', 'variants keep the Agent SDK runtime (needs tools) and stay locked');
-    assert.equal(rt('claude-unreal'), 'claude-agent-sdk');
+    const prt = (id: string) => village.registries.runtimes.get(village.registries.profiles.get(id)!.runtime)!.kind;
+    assert.equal(prt('claude-blender'), 'claude-agent-sdk', 'Blender/Unreal profiles keep the Agent SDK runtime (needs tools) and stay locked');
+    assert.equal(prt('claude-unreal'), 'claude-agent-sdk');
     assert.equal(rt('scribe'), 'openai-agents');
-    assert.match(village.chat.deliveryBlocker('claude-blender')!, /individual verification/);
+    assert.equal(village.residents().find((r) => r.id === 'claude')!.profiles.find((p) => p.id === 'claude-blender')!.status, 'disconnected');
   } finally {
     village.close();
   }

@@ -12,6 +12,7 @@ import { ToolGateway } from './gateway.ts';
 import { loadRegistries, type Registries } from './registry.ts';
 import { residentViews, type ResidentView } from './residents.ts';
 import { Settings } from './settings.ts';
+import { loadWorld, type LoadedWorld } from './world.ts';
 import { TaskEngine } from './tasks.ts';
 
 export class Village {
@@ -28,6 +29,8 @@ export class Village {
   /** Runtime adapters by runtime kind. Only real adapters are ever registered; none means nobody can answer. */
   readonly adapters: Map<string, AgentAdapter>;
   registries: Registries;
+  /** The village layout (config/layout/world.json); null if it cannot be read. */
+  world: LoadedWorld;
   private doctorResults: Map<string, IntegrationResult> | null;
   private lastViews = new Map<string, string>();
   doctorRunning = false;
@@ -37,6 +40,7 @@ export class Village {
     this.db = openDb(config.dbPath);
     this.events = new EventLog(this.db);
     this.registries = opts.registries ?? loadRegistries(config.configDir);
+    this.world = loadWorld(config.configDir, this.registries);
     this.approvals = new Approvals(this.db, this.events);
     this.settings = new Settings(this.db, this.events);
     this.billing = new BillingGuard(this.db, this.events, () => this.registries);
@@ -68,6 +72,7 @@ export class Village {
     tx(this.db, () => {
       this.events.append({ type: 'village.started', actor: 'system', payload: { machine: this.config.machineName, platform: this.config.platform, node: process.versions.node, residents: this.registries.residents.size, registryErrors: this.registries.errors.length } });
       for (const e of this.registries.errors) this.events.append({ type: 'registry.invalid', actor: 'system', payload: { file: e.file, message: e.message } });
+      for (const m of this.world.errors) this.events.append({ type: 'registry.invalid', actor: 'system', payload: { file: this.world.file, message: m } });
     });
     this.tasks.recoverAfterRestart();
     this.chat.recoverAfterRestart();

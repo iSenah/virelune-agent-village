@@ -12,6 +12,18 @@ const store = new Store();
 let scene: VillageScene | null = null;
 let selected: { building?: string; resident?: string } | null = null;
 const residentWindow = new ResidentWindow(store, new Map(BUILDINGS.map((b) => [b.id, b.place])));
+
+/** The village layout from Village Hall (districts, buildings, who lives or works where). */
+type WorldInfo = { districts: { id: string; name: string; subtitle: string }[]; buildings: { id: string; place: string; district: string; kind: string; residents: string[]; workers: { profile: string; resident: string }[] }[] };
+let world: WorldInfo | null = null;
+async function loadWorldInfo() {
+  try {
+    world = (await api('GET', '/api/world')).world;
+    residentWindow.setPlaces(new Map(world!.buildings.map((b) => [b.id, b.place])));
+  } catch {
+    world = null; // the panel falls back to the built-in list
+  }
+}
 residentWindow.onClose = () => {
   selected = null;
   scene?.overview();
@@ -49,6 +61,7 @@ async function boot() {
   }
   store.subscribe(render);
   wireControls();
+  await loadWorldInfo();
   try {
     await store.start();
   } catch (e) {
@@ -280,25 +293,32 @@ function renderAutonomy() {
 function renderResidents() {
   const s = store.state!;
   const list = $('#residents');
-  // Grouped by where each resident lives, in village order (Town Hall first).
-  const known = new Set(BUILDINGS.map((b) => b.id));
-  const groups: { id: string; name: string; rs: any[] }[] = BUILDINGS.map((b) => ({ id: b.id, name: b.place, rs: s.residents.filter((r: any) => r.building === b.id) }));
+  // Grouped by district and building, in layout order. Shared workplaces list who works there (through their
+  // Blender/Unreal profiles); nobody lives at a workplace.
+  const places = world?.buildings ?? BUILDINGS.map((b) => ({ id: b.id, place: b.place, district: 'founders', kind: 'residence', residents: [], workers: [] as { profile: string; resident: string }[] }));
+  const districtName = new Map((world?.districts ?? []).map((d) => [d.id, d.name]));
+  const known = new Set(places.map((b) => b.id));
+  const names = new Map(s.residents.map((r: any) => [r.id, r.displayName]));
+  const groups: { id: string; name: string; district: string; rs: any[]; workers: string[] }[] = places.map((b) => ({ id: b.id, name: b.place, district: b.district, rs: s.residents.filter((r: any) => r.building === b.id), workers: [...new Set(b.workers.map((w) => names.get(w.resident) ?? w.resident))] }));
   const elsewhere = s.residents.filter((r: any) => !known.has(r.building));
-  if (elsewhere.length) groups.push({ id: '', name: 'Elsewhere', rs: elsewhere });
+  if (elsewhere.length) groups.push({ id: '', name: 'Elsewhere', district: '', rs: elsewhere, workers: [] });
   const pick = (building: string, resident?: string) => openResident(building, resident);
   const { activeRuns } = deriveActivity(store.events);
   const answering = new Set(activeRuns.values());
+  let lastDistrict = '';
   list.replaceChildren(
     ...groups
-      .filter((g) => g.rs.length)
+      .filter((g) => g.rs.length || g.workers.length)
       .flatMap((g) => [
+        ...(g.district && g.district !== lastDistrict && districtName.size ? [el('li', { class: 'district' }, districtName.get((lastDistrict = g.district)) ?? g.district)] : []),
         el('li', { class: `group${selected?.building === g.id && !selected?.resident ? ' selected' : ''}`, onclick: () => g.id && pick(g.id) }, g.name),
+        ...(g.workers.length ? [el('li', { class: 'workers', onclick: () => pick(g.id) }, el('span', { class: 'why' }, `Shared workspace · ${g.workers.join(' and ')} work here through their profiles`))] : []),
         ...[...g.rs]
           .sort((a, b) => Number(b.focus) - Number(a.focus) || a.displayName.localeCompare(b.displayName))
           .map((r) =>
             el('li', { class: selected?.resident === r.id ? 'selected' : '', onclick: () => pick(r.building, r.id) },
-              el('span', { class: `dot ${r.status}` }),
-              el('span', { class: 'name' }, r.displayName, r.focus ? el('span', { class: 'tag' }, 'focus') : null, answering.has(r.id) ? el('span', { class: 'tag busy' }, 'working') : null, r.billing?.allowed ? el('span', { class: 'tag paid', title: 'Paid use allowed' }, 'paid') : null),
+              el('span', { class: `dot ${r.planned ? 'planned' : r.status}` }),
+              el('span', { class: 'name' }, r.displayName, r.focus ? el('span', { class: 'tag' }, 'focus') : null, r.planned ? el('span', { class: 'tag planned' }, 'planned') : null, answering.has(r.id) ? el('span', { class: 'tag busy' }, 'working') : null, r.billing?.allowed ? el('span', { class: 'tag paid', title: 'Paid use allowed' }, 'paid') : null),
               el('span', { class: 'why' }, r.status === 'connected' ? 'Connected: integration checks passed' : r.reasons[0] ?? ''),
             ),
           ),

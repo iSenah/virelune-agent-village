@@ -8,7 +8,7 @@ import { CodexAdapter } from '../integrations/adapters/codex.ts';
 import { CODEX_DISABLED_FEATURES, codexLaunchArgs } from '../integrations/runtime-config.ts';
 import { PROJECT_ROOT } from '../server/lib/config.ts';
 import type { Village } from '../server/lib/app.ts';
-import { loadRegistries } from '../server/lib/registry.ts';
+import { loadRegistries, parseResident } from '../server/lib/registry.ts';
 import { which } from '../integrations/util.ts';
 import { makeVillage, tmpDir } from './helpers.ts';
 
@@ -304,18 +304,20 @@ test('extra sandbox permissions are never granted', async () => {
 
 test('several residents talk to Codex at once, each with its own process, token, thread and history', async () => {
   const reg = loadRegistries(path.join(PROJECT_ROOT, 'config'));
-  reg.residents.get('codex-blender')!.focus = true; // stand in for a verified variant, for this test only
+  // A second Codex-runtime resident, for this test only (the real village has one Codex).
+  const twin = parseResident({ id: 'codex-twin', displayName: 'Codex Twin', role: 'test', capabilities: ['t'], runtime: 'codex-app-server', provider: 'chatgpt-plan', building: 'engineering-forge', appearance: { lineage: 'codex', color: '#e8890c' }, requires: ['codex'], focus: true, permissions: 'restricted' });
+  reg.residents.set('codex-twin', twin.value!);
   const { village, entries } = codexVillage('ok', { registries: reg });
   try {
     village.chat.send('codex', 'Message for Codex');
-    village.chat.send('codex-blender', 'Message for Codex Blender');
+    village.chat.send('codex-twin', 'Message for the twin');
     await settle(village, 'codex');
-    await settle(village, 'codex-blender');
+    await settle(village, 'codex-twin');
     assert.equal(village.chat.list('codex')[1].body, 'Hello from the fake Codex: Message for Codex');
-    assert.equal(village.chat.list('codex-blender')[1].body, 'Hello from the fake Codex: Message for Codex Blender');
+    assert.equal(village.chat.list('codex-twin')[1].body, 'Hello from the fake Codex: Message for the twin');
     const starts = entries().filter((e) => e.type === 'start');
     assert.equal(starts.length, 2);
-    assert.deepEqual(starts.map((s) => s.argv.find((a: string) => a.startsWith('mcp_servers.village.url='))).sort(), ['mcp_servers.village.url="http://127.0.0.1:4317/mcp/codex"', 'mcp_servers.village.url="http://127.0.0.1:4317/mcp/codex-blender"']);
+    assert.deepEqual(starts.map((s) => s.argv.find((a: string) => a.startsWith('mcp_servers.village.url='))).sort(), ['mcp_servers.village.url="http://127.0.0.1:4317/mcp/codex"', 'mcp_servers.village.url="http://127.0.0.1:4317/mcp/codex-twin"']);
   } finally {
     village.close();
   }
@@ -329,7 +331,9 @@ test('the real server registers the Codex adapter, and it needs a passing doctor
     assert.match(village.chat.deliveryBlocker('codex')!, /not signed in/);
     village.setDoctorResultsForTest(allReady());
     assert.equal(village.chat.deliveryBlocker('codex'), null);
-    assert.match(village.chat.deliveryBlocker('codex-unreal')!, /individual verification/, 'variants are not unlocked by Codex');
+    const codexUnreal = village.residents().find((r) => r.id === 'codex')!.profiles.find((p) => p.id === 'codex-unreal')!;
+    assert.equal(codexUnreal.status, 'disconnected', 'Codex in Unreal is not unlocked by connecting Codex');
+    assert.match(codexUnreal.reasons[0], /individual verification/);
   } finally {
     village.close();
   }

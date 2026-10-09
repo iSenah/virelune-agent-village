@@ -50,13 +50,14 @@ test('paid use is off by default for every paid resident; plan-based and local r
   const { village } = paidVillage();
   try {
     for (const id of ['claude', 'echo', 'claude-blender', 'claude-unreal']) {
+      // claude-blender and claude-unreal are Claude's execution profiles: same Anthropic bill, Claude's switch.
       const b = village.billing.info(id);
       assert.equal(b.paid, true, id);
       assert.equal(b.kind, 'paid-api', id);
       assert.equal(b.allowed, false, `${id} must start with paid use off`);
       assert.match(b.charges, /nothing is sent until you allow paid use/);
     }
-    for (const [id, kind] of [['codex', 'subscription'], ['codex-blender', 'subscription'], ['codex-unreal', 'subscription'], ['aura', 'subscription'], ['scribe', 'free-local']]) {
+    for (const [id, kind] of [['codex', 'subscription'], ['codex-blender', 'subscription'], ['codex-unreal', 'subscription'], ['aura', 'subscription'], ['scribe', 'free-local'], ['gemini', 'none'], ['copilot', 'none'], ['deepseek', 'none']]) {
       const b = village.billing.info(id);
       assert.equal(b.paid, false, id);
       assert.equal(b.kind, kind, id);
@@ -114,11 +115,17 @@ test('allowing paid use needs an explicit acknowledgement, is logged, and only t
   }
 });
 
-test('each resident has its own switch: allowing Claude allows nobody else', async () => {
+test('each resident has its own switch: allowing Claude allows only Claude (and his own Blender/Unreal profiles)', async () => {
   const { village, echo } = paidVillage();
   try {
+    assert.throws(() => village.billing.set('claude-blender', true, true), /follows Claude's paid-use switch/, 'profiles have no switch of their own');
     village.billing.set('claude', true, true);
-    for (const id of ['echo', 'claude-blender', 'claude-unreal']) assert.equal(village.billing.info(id).allowed, false, id);
+    for (const id of ['claude-blender', 'claude-unreal']) assert.equal(village.billing.info(id).allowed, true, `${id} follows Claude`);
+    assert.equal(village.billing.info('echo').allowed, false);
+    village.billing.set('claude', false, false);
+    for (const id of ['claude-blender', 'claude-unreal']) assert.equal(village.billing.info(id).allowed, false, `${id} is off with Claude`);
+    assert.match(village.billing.blocker('claude-blender')!, /Paid use is off for Claude\. Claude · Blender uses the Anthropic API/);
+    village.billing.set('claude', true, true);
     const m = village.chat.send('echo', 'Hello Echo');
     await settle(village, 'echo');
     assert.equal(m.status, 'undelivered');

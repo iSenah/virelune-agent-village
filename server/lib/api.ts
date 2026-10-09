@@ -6,6 +6,7 @@ import { stripTypeScriptTypes } from 'node:module';
 import path from 'node:path';
 import type { Village } from './app.ts';
 import { LayoutError, LayoutStore } from './layout.ts';
+import { worldView } from './world.ts';
 import { AUTONOMY_LEVELS } from './settings.ts';
 
 type Handler = (req: http.IncomingMessage, res: http.ServerResponse, params: Record<string, string>, url: URL) => Promise<void> | void;
@@ -140,11 +141,15 @@ export function createServer(village: Village): http.Server {
         }),
       },
       billing: village.billing.info(id),
+      profiles: view.profiles.map((pv) => ({ ...pv, archivedMessages: (village.db.prepare('SELECT COUNT(*) AS n FROM chat_messages WHERE resident = ?').get(pv.id) as any).n })),
       tasks: village.tasks.list().filter((t) => t.assignee === id),
       approvals: village.approvals.list('pending').filter((a) => a.resident === id),
       chat: { messages: village.chat.list(id, 'main', limit), busy: village.chat.isBusy(id), partial: village.chat.partial(id), blocker: village.chat.deliveryBlocker(id) },
     });
   });
+
+  // Old conversations of the former Blender/Unreal variant residents, now execution profiles (read-only).
+  route('GET', '/api/profiles/:id/history', (_q, res, p) => send(res, 200, { messages: village.chat.archived(decodeURIComponent(p.id)) }));
 
   route('GET', '/api/tasks', (_q, res) => send(res, 200, { tasks: village.tasks.list() }));
   route('GET', '/api/approvals', (_q, res) => send(res, 200, { approvals: village.approvals.list() }));
@@ -181,6 +186,11 @@ export function createServer(village: Village): http.Server {
   // Village layout (cosmetic only: lamp-post rotations). Shared through git, not machine-specific.
   const layout = new LayoutStore(village.config.layoutFile);
   route('GET', '/api/layout', (_q, res) => send(res, 200, layout.read()));
+  // The village layout: districts, building slots, entrances, roads, and who lives or works where.
+  route('GET', '/api/world', (_q, res) => {
+    if (!village.world.world) throw new HttpError(500, village.world.errors.join('; '));
+    send(res, 200, { world: worldView(village.world.world, village.registries), errors: village.world.errors });
+  });
   route('PUT', '/api/layout/lamps/:id', async (req, res, p) => {
     const b = await readJson(req);
     try {
@@ -202,7 +212,7 @@ export function createServer(village: Village): http.Server {
     const auth = String(req.headers.authorization ?? '');
     const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
     const resident = decodeURIComponent(p.resident);
-    const verdict = village.registries.residents.has(resident) ? village.gateway.authenticate(resident, token) : 'unauthenticated';
+    const verdict = village.registries.residents.has(resident) || village.registries.principals?.has(resident) ? village.gateway.authenticate(resident, token) : 'unauthenticated';
     if (verdict === 'unauthenticated') {
       village.events.append({ type: 'tool.auth_failed', actor: 'gateway', payload: { resident, reason: token ? 'bad token' : 'no token' } });
       throw new HttpError(401, 'unauthenticated');

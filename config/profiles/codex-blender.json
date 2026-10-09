@@ -1,7 +1,10 @@
 {
+  "$comment": "An execution profile of Codex, not a separate resident: the same Codex walks to the blender-house workplace to use it. Its own tools, runtime and verification apply; paid use follows Codex's switch.",
   "id": "codex-blender",
+  "resident": "codex",
   "displayName": "Codex · Blender",
   "role": "Blender scene scripting and asset automation with Codex",
+  "workplace": "blender-house",
   "capabilities": [
     "blender",
     "3d-assets",
@@ -9,17 +12,6 @@
   ],
   "runtime": "codex-app-server",
   "provider": "chatgpt-plan",
-  "model": null,
-  "building": "blender-house",
-  "appearance": {
-    "lineage": "codex",
-    "color": "#e8890c"
-  },
-  "requires": [
-    "codex",
-    "blender"
-  ],
-  "focus": false,
   "tools": [
     {
       "server": "blender-lab",
@@ -31,6 +23,10 @@
         "risk:exec"
       ]
     }
+  ],
+  "requires": [
+    "codex",
+    "blender"
   ],
   "verification": {
     "required": true

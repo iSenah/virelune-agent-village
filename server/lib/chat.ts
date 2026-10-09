@@ -85,6 +85,7 @@ export class ChatService {
   deliveryBlocker(residentId: string): string | null {
     const r = this.d.registries().residents.get(residentId);
     if (!r) return 'unknown resident';
+    if (r.planned) return `${r.displayName} is a planned resident: its home is reserved, but no runtime or provider is connected yet, so nothing can answer.`;
     const v = this.d.residents().find((x) => x.id === residentId);
     if (!v || v.status !== 'connected') {
       const state = v?.status === 'untested' ? 'not checked yet' : 'disconnected';
@@ -109,6 +110,17 @@ export class ChatService {
     this.requireResident(residentId);
     const lim = Math.max(1, Math.min(limit, 1000));
     const rows = this.d.db.prepare('SELECT * FROM (SELECT rowid AS rid, * FROM chat_messages WHERE resident = ? AND thread = ? ORDER BY rowid DESC LIMIT ?) ORDER BY rid ASC').all(residentId, thread, lim) as any[];
+    return rows.map(rowToMessage);
+  }
+
+  /**
+   * Read-only history kept from before the Blender and Unreal variants became execution profiles of Claude and
+   * Codex (their old conversations stay in the database; nothing new is ever added to them).
+   */
+  archived(principalId: string, limit = 200): ChatMessage[] {
+    const reg = this.d.registries();
+    if (!reg.principals?.has(principalId) || reg.residents.has(principalId)) throw new NotFoundError(`profile "${principalId}" not found`);
+    const rows = this.d.db.prepare('SELECT * FROM (SELECT rowid AS rid, * FROM chat_messages WHERE resident = ? ORDER BY rowid DESC LIMIT ?) ORDER BY rid ASC').all(principalId, Math.max(1, Math.min(limit, 1000))) as any[];
     return rows.map(rowToMessage);
   }
 

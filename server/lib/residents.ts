@@ -22,9 +22,32 @@ export type ResidentView = {
   tools: string[];
   /** Provider billing and whether paid use is allowed (added by the Village). */
   billing?: BillingInfo;
+  /** Planned resident: home reserved, nothing connected. */
+  planned: boolean;
+  /** Home building (same as building). */
+  home: string;
+  /** Shared workplaces this resident uses through its execution profiles. */
+  workplaces: string[];
+  /** Execution profiles (e.g. Claude in Blender) with their own status, runtime and tools. */
+  profiles: ProfileView[];
+};
+
+export type ProfileView = {
+  id: string;
+  resident: string;
+  displayName: string;
+  role: string;
+  workplace: string;
+  runtime: string;
+  provider: string;
+  tools: string[];
+  status: ResidentStatus;
+  reasons: string[];
+  parts: ResidentView['parts'];
 };
 
 export function residentStatus(r: Resident, reg: Registries, results: Map<string, IntegrationResult> | null): Pick<ResidentView, 'status' | 'reasons' | 'parts'> {
+  if (r.planned) return { status: 'disconnected', reasons: [`Planned resident: ${r.displayName}'s home is reserved, but no runtime or provider has been chosen yet.`], parts: [] };
   if (!results) return { status: 'untested', reasons: ['No integration check has run on this machine yet. Run the doctor.'], parts: [] };
   const needed = new Set(r.requires);
   const rt = reg.runtimes.get(r.runtime);
@@ -51,8 +74,22 @@ export function residentStatus(r: Resident, reg: Registries, results: Map<string
   return { status: 'disconnected', reasons, parts };
 }
 
+export function profileViews(reg: Registries, results: Map<string, IntegrationResult> | null, residentId: string): ProfileView[] {
+  return [...(reg.profiles?.values() ?? [])]
+    .filter((p) => p.resident === residentId)
+    .map((p) => {
+      const principal = reg.principals?.get(p.id);
+      const st = principal ? residentStatus(principal, reg, results) : { status: 'disconnected' as const, reasons: ['Profile not loaded'], parts: [] };
+      return { id: p.id, resident: p.resident, displayName: p.displayName, role: p.role, workplace: p.workplace, runtime: p.runtime, provider: p.provider, tools: p.tools.map((t) => t.server), ...st };
+    });
+}
+
 export function residentViews(reg: Registries, results: Map<string, IntegrationResult> | null): ResidentView[] {
   return [...reg.residents.values()].map((r) => ({
+    planned: r.planned,
+    home: r.building,
+    workplaces: r.workplaces ?? [],
+    profiles: profileViews(reg, results, r.id),
     id: r.id,
     displayName: r.displayName,
     role: r.role,

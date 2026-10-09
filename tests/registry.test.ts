@@ -22,9 +22,12 @@ const base = {
 test('the shipped registries load with no errors', () => {
   const reg = loadRegistries(path.join(PROJECT_ROOT, 'config'));
   assert.deepEqual(reg.errors, []);
-  assert.equal(reg.residents.size, 9);
+  assert.equal(reg.residents.size, 8);
+  assert.deepEqual([...reg.profiles.keys()].sort(), ['claude-blender', 'claude-unreal', 'codex-blender', 'codex-unreal']);
+  assert.deepEqual([...reg.residents.values()].filter((r) => r.planned).map((r) => r.id).sort(), ['copilot', 'deepseek', 'gemini']);
   assert.deepEqual([...reg.residents.values()].filter((r) => r.focus).map((r) => r.id).sort(), ['claude', 'codex', 'echo']);
-  for (const id of ['aura', 'codex-unreal', 'claude-unreal', 'codex-blender', 'claude-blender', 'scribe']) assert.equal(reg.residents.get(id)?.focus, false, `${id} must not be a focus resident`);
+  for (const id of ['aura', 'scribe', 'gemini', 'copilot', 'deepseek']) assert.equal(reg.residents.get(id)?.focus, false, `${id} must not be a focus resident`);
+  for (const p of reg.profiles.values()) assert.equal(reg.principals.get(p.id)!.focus, false, `${p.id} is never a focus principal`);
 });
 
 test('shipped tool servers expose nothing until their tools are classified', () => {
@@ -82,9 +85,19 @@ test('village homes: each resident lives where the village says, and every figur
   assert.deepEqual(at('library'), ['claude']);
   assert.deepEqual(at('engineering-forge'), ['codex']);
   assert.deepEqual(at('unreal-workshop'), ['aura'], 'Aura has the Unreal Workshop to herself');
-  assert.deepEqual(at('unreal-studio'), ['claude-unreal', 'codex-unreal'], 'the UE Studio is home to Codex · Unreal and Claude · Unreal');
-  assert.deepEqual(at('blender-house'), ['claude-blender', 'codex-blender']);
+  assert.deepEqual(at('unreal-studio'), [], 'UE Studio is a shared workplace, nobody lives there');
+  assert.deepEqual(at('blender-house'), [], 'Blender House is a shared workplace, nobody lives there');
+  assert.deepEqual(at('gemini-observatory'), ['gemini']);
+  assert.deepEqual(at('copilot-commandery'), ['copilot']);
+  assert.deepEqual(at('deepseek-cottage'), ['deepseek']);
+  // One Claude and one Codex: the Blender and Unreal work happens through their profiles at the workplaces.
+  assert.deepEqual([...reg.residents.get('claude')!.workplaces].sort(), ['blender-house', 'unreal-studio']);
+  assert.deepEqual([...reg.residents.get('codex')!.workplaces].sort(), ['blender-house', 'unreal-studio']);
+  const prof = (id: string) => reg.profiles.get(id)!;
+  assert.deepEqual([prof('claude-blender').resident, prof('claude-blender').workplace], ['claude', 'blender-house']);
+  assert.deepEqual([prof('codex-unreal').resident, prof('codex-unreal').workplace], ['codex', 'unreal-studio']);
+  // Exactly one figure per real resident; planned residents get theirs when their models arrive.
+  assert.deepEqual([...reg.residents.values()].filter((r) => r.appearance.figure).map((r) => r.id).sort(), ['aura', 'claude', 'codex', 'echo', 'scribe']);
   assert.deepEqual(at('post-office'), ['scribe']);
-  for (const r of reg.residents.values()) assert.notEqual(r.appearance.figure, false, `${r.id} should have a village figure`);
   assert.equal(parseResident({ ...base, appearance: { lineage: 'codex', color: '#e8890c', figure: 'no' } }).errors.some((e) => e.includes('figure')), true);
 });

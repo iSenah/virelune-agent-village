@@ -81,7 +81,7 @@ npm run codex:sandbox-setup # Windows: one-time Codex sandbox setup for the vill
 | **Claude** | `ANTHROPIC_API_KEY` in `.env` (paid API; a Claude subscription can't be used by third-party apps), then **Allow paid use** in Claude's Profile. Optional live check: `npm run paid:verify -- claude --confirm-paid`. |
 | **Echo** | `OPENAI_API_KEY` in `.env` (paid API; a ChatGPT subscription does not cover it), then **Allow paid use** in Echo's Profile. The village's Echo is a separate API instance, not your ChatGPT. Optional live check: `npm run paid:verify -- echo --confirm-paid`. |
 
-Aura, Codex · Blender, Claude · Blender, Codex · Unreal, Claude · Unreal and Scribe are registered but stay **disconnected until each passes its own verification test**, even if their tools are installed.
+Aura, Scribe and the Blender and Unreal profiles of Claude and Codex stay **disconnected until each passes its own verification test**, even if their tools are installed. Gemini, Copilot and DeepSeek are planned residents.
 
 ## Configuration
 
@@ -159,15 +159,19 @@ The village lowers its render resolution automatically on slower GPUs and restor
 
 The village uses custom textured models for all seven buildings, the street lamps and five residents (Echo, Claude, Codex, Aura, Scribe), listed in `web/assets/models/manifest.json` (see [web/assets/models/README.md](web/assets/models/README.md)). Procedural placeholders show while models load and stay in place for any model that fails to load. Disconnected or unchecked residents are dimmed and their buildings slightly darker; a connected resident is shown at full colour with a soft ring at its feet. There are no work animations unless a real run is in progress. The fountain, river, waterfalls, bridges, fences and lamps are ambient scenery built after the hub concept; none of it reacts to agent work. Press **G** (or **Graphics → Show diagnostics**) for frame rate, draw calls, triangles and what each part of the village costs. Buildings and residents use a lighter copy of their model when far from the camera, so the overview stays fast.
 
-| Building | Residents |
-| --- | --- |
-| Town Hall | Echo |
-| Library & Archives | Claude |
-| Engineering Forge | Codex |
-| Unreal Workshop | Aura |
-| UE Studio | Codex · Unreal, Claude · Unreal |
-| Blender House | Codex · Blender, Claude · Blender |
-| Post Office | Scribe |
+| District | Building | Who |
+| --- | --- | --- |
+| Founders' Square | Town Hall | Echo |
+| | Library & Archives | Claude |
+| | Engineering Forge | Codex |
+| | Unreal Workshop | Aura |
+| | Post Office | Scribe |
+| Creative Workshops | Blender House, UE Studio | Shared workplaces: Claude and Codex work here through their Blender and Unreal profiles |
+| Artisan Quarter | Tripo Stable, Runway Cinema | Future services (no resident) |
+| Scholars' Heights | Gemini Observatory, Copilot Commandery | Gemini, Copilot (planned) |
+| The Forgotten Woods | DeepSeek Gothic Cottage | DeepSeek (planned) |
+
+Claude and Codex are each one resident. Their Blender and Unreal work runs through **execution profiles** (`config/profiles/`): same resident and figure, but each profile has its own runtime, tools and verification, and Claude's profiles follow Claude's paid-use switch. Planned residents have a reserved home but no provider, so they are never shown as connected and cannot receive messages. Building positions, entrances, districts and walkable roads live in `config/layout/world.json` (see [docs/world-expansion.md](docs/world-expansion.md)).
 
 `docs/concept-art/` holds the reference sheets for the layout and the residents.
 

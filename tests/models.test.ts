@@ -41,9 +41,13 @@ test('every building and resident lineage in the manifest is used by the registr
   const reg = loadRegistries(path.join(PROJECT_ROOT, 'config'));
   const buildings = new Set([...reg.residents.values()].map((r) => r.building));
   const lineages = new Set([...reg.residents.values()].map((r) => r.appearance.lineage));
-  for (const id of Object.keys(manifest.buildings)) assert.ok(buildings.has(id), `manifest building "${id}" has no resident`);
   for (const id of Object.keys(manifest.characters)) assert.ok(lineages.has(id), `manifest character "${id}" matches no resident lineage`);
-  for (const id of buildings) assert.ok(manifest.buildings[id], `building "${id}" has no custom model`);
+  // Every home or workplace either has a custom model, or is a layout slot waiting for its model (with a note
+  // describing it); the development placeholder shows there until the model arrives.
+  const world = JSON.parse(fs.readFileSync(path.join(PROJECT_ROOT, 'config', 'layout', 'world.json'), 'utf8'));
+  const slot = (id: string) => world.buildings.find((b: any) => b.id === id && b.modelNote);
+  for (const id of [...buildings, ...[...reg.profiles.values()].map((p) => p.workplace)]) assert.ok(manifest.buildings[id] || slot(id), `building "${id}" has neither a custom model nor a layout slot`);
+  for (const id of Object.keys(manifest.buildings)) assert.ok(world.buildings.some((b: any) => b.id === id), `model for "${id}" has no place in the layout`);
 });
 
 test('each model file is a valid GLB with browser-sized textures', () => {

@@ -1,7 +1,10 @@
 {
+  "$comment": "An execution profile of Claude, not a separate resident: the same Claude walks to the unreal-studio workplace to use it. Its own tools, runtime and verification apply; paid use follows Claude's switch.",
   "id": "claude-unreal",
-  "displayName": "Claude \u00b7 Unreal",
+  "resident": "claude",
+  "displayName": "Claude · Unreal",
   "role": "Unreal Engine design and documentation with Claude",
+  "workplace": "unreal-studio",
   "capabilities": [
     "unreal",
     "design"
@@ -9,17 +12,6 @@
   "runtime": "claude-agent-sdk",
   "provider": "anthropic",
   "model": "claude-sonnet-5-5",
-  "building": "unreal-studio",
-  "appearance": {
-    "lineage": "claude",
-    "color": "#c8643c"
-  },
-  "requires": [
-    "claude-agent-sdk",
-    "anthropic-api",
-    "unreal"
-  ],
-  "focus": false,
   "tools": [
     {
       "server": "unreal-58",
@@ -31,6 +23,11 @@
         "risk:exec"
       ]
     }
+  ],
+  "requires": [
+    "claude-agent-sdk",
+    "anthropic-api",
+    "unreal"
   ],
   "verification": {
     "required": true

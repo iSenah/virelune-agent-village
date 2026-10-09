@@ -1,24 +1,16 @@
 {
+  "$comment": "An execution profile of Codex, not a separate resident: the same Codex walks to the unreal-studio workplace to use it. Its own tools, runtime and verification apply; paid use follows Codex's switch.",
   "id": "codex-unreal",
-  "displayName": "Codex \u00b7 Unreal",
+  "resident": "codex",
+  "displayName": "Codex · Unreal",
   "role": "Unreal Engine scripting and tooling with Codex",
+  "workplace": "unreal-studio",
   "capabilities": [
     "unreal",
     "programming"
   ],
   "runtime": "codex-app-server",
   "provider": "chatgpt-plan",
-  "model": null,
-  "building": "unreal-studio",
-  "appearance": {
-    "lineage": "codex",
-    "color": "#e8890c"
-  },
-  "requires": [
-    "codex",
-    "unreal"
-  ],
-  "focus": false,
   "tools": [
     {
       "server": "unreal-58",
@@ -30,6 +22,10 @@
         "risk:exec"
       ]
     }
+  ],
+  "requires": [
+    "codex",
+    "unreal"
   ],
   "verification": {
     "required": true

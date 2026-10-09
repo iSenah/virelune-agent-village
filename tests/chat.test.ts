@@ -64,7 +64,7 @@ test('non-focus residents stay undelivered even when their tools pass checks', (
   const adapter = new FixtureAdapter();
   const { village } = makeVillage({ adapters: [adapter] });
   village.setDoctorResultsForTest(allReady());
-  const m = village.chat.send('codex-blender', 'Model a chair');
+  const m = village.chat.send('aura', 'Build a level');
   assert.equal(m.status, 'undelivered');
   assert.match(m.reason!, /individual verification/);
   assert.equal(adapter.calls.length, 0);
@@ -163,12 +163,23 @@ test('chat API: resident detail, sending needs the village header, and reasons a
   const base = `http://127.0.0.1:${(server.address() as any).port}`;
   try {
     const H = { 'content-type': 'application/json', 'x-village-client': '1' };
-    const detail = await (await fetch(`${base}/api/residents/claude-unreal`)).json();
-    assert.equal(detail.resident.building, 'unreal-studio');
-    assert.equal(detail.profile.runtime.adapterEnabled, false);
+    const detail = await (await fetch(`${base}/api/residents/claude`)).json();
+    assert.equal(detail.resident.building, 'library');
+    assert.deepEqual([...detail.resident.workplaces].sort(), ['blender-house', 'unreal-studio']);
     assert.equal(detail.profile.provider.billing, 'paid-api');
-    assert.deepEqual(detail.profile.tools.map((t: any) => t.server), ['unreal-58']);
+    const ue = detail.profiles.find((p: any) => p.id === 'claude-unreal');
+    assert.equal(ue.workplace, 'unreal-studio');
+    assert.deepEqual(ue.tools, ['unreal-58']);
+    assert.notEqual(ue.status, 'connected');
+    assert.equal(ue.archivedMessages, 0);
     assert.match(detail.chat.blocker, /not checked yet/);
+    assert.equal((await fetch(`${base}/api/residents/claude-unreal`)).status, 404, 'a profile is not a resident with its own chat');
+    assert.deepEqual((await (await fetch(`${base}/api/profiles/claude-unreal/history`)).json()).messages, []);
+    assert.equal((await fetch(`${base}/api/profiles/claude/history`)).status, 404);
+    const planned = await (await fetch(`${base}/api/residents/gemini`)).json();
+    assert.equal(planned.resident.planned, true);
+    assert.equal(planned.billing.kind, 'none');
+    assert.match(planned.chat.blocker, /planned resident/);
     assert.equal((await fetch(`${base}/api/residents/nobody`)).status, 404);
     assert.equal((await fetch(`${base}/api/residents/codex/chat`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ body: 'hi' }) })).status, 403);
     assert.equal((await fetch(`${base}/api/residents/codex/chat`, { method: 'POST', headers: { ...H, origin: 'https://evil.example' }, body: JSON.stringify({ body: 'hi' }) })).status, 403);

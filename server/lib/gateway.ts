@@ -44,7 +44,7 @@ export class ToolGateway {
 
   /** Issue a fresh session token for a resident. The plain token is returned once and only kept as a hash. */
   issueToken(residentId: string): string {
-    if (!this.opts.registries().residents.has(residentId)) throw new Error(`unknown resident ${residentId}`);
+    if (!this.principal(residentId)) throw new Error(`unknown resident ${residentId}`);
     const token = crypto.randomBytes(32).toString('base64url');
     this.tokens.set(residentId, crypto.createHash('sha256').update(token).digest());
     return token;
@@ -64,8 +64,14 @@ export class ToolGateway {
     return 'ok';
   }
 
+  /** A resident or one of its execution profiles (each profile holds its own gateway session and tool grants). */
+  private principal(id: string): Resident | undefined {
+    const reg = this.opts.registries();
+    return reg.residents.get(id) ?? reg.principals?.get(id);
+  }
+
   private resident(id: string): Resident {
-    const r = this.opts.registries().residents.get(id);
+    const r = this.principal(id);
     if (!r) throw new Error('unknown resident');
     return r;
   }

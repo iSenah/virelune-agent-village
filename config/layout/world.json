@@ -1,0 +1,540 @@
+{
+  "version": 1,
+  "$comment": "Virelune Agent Village layout. Positions are metres: x east, z south (the fountain is at 0,0). 'face' is the point a building's front door looks at (default: the fountain). Building ids must match config/residents and web/assets/models/manifest.json. Adjust a building here when its final model arrives; tests check that nothing overlaps and that every entrance can be reached on foot from the plaza.",
+  "plazaRadius": 6.8,
+  "districts": [
+    {
+      "id": "founders",
+      "name": "Founders' Square",
+      "subtitle": "Where the village began",
+      "center": [
+        0,
+        0
+      ],
+      "radius": 36,
+      "elevation": 0
+    },
+    {
+      "id": "creative",
+      "name": "Creative Workshops",
+      "subtitle": "Build & Design",
+      "center": [
+        62,
+        4
+      ],
+      "radius": 20,
+      "elevation": 0
+    },
+    {
+      "id": "artisan",
+      "name": "Artisan Quarter",
+      "subtitle": "Create & Produce",
+      "center": [
+        -60,
+        6
+      ],
+      "radius": 22,
+      "elevation": 0
+    },
+    {
+      "id": "heights",
+      "name": "Scholars' Heights",
+      "subtitle": "Research & Knowledge",
+      "center": [
+        0,
+        -70
+      ],
+      "radius": 30,
+      "elevation": 8
+    },
+    {
+      "id": "woods",
+      "name": "The Forgotten Woods",
+      "subtitle": "DeepSeek's Domain",
+      "center": [
+        72,
+        60
+      ],
+      "radius": 24,
+      "elevation": 0
+    }
+  ],
+  "buildings": [
+    {
+      "id": "town-hall",
+      "place": "Town Hall",
+      "title": "Echo",
+      "subtitle": "Town Hall",
+      "tagline": "Coordinator · Mayor",
+      "district": "founders",
+      "kind": "residence",
+      "x": 0,
+      "z": -18,
+      "w": 11,
+      "d": 8,
+      "indicatorHeight": 16
+    },
+    {
+      "id": "library",
+      "place": "Library & Archives",
+      "title": "Claude",
+      "subtitle": "Library & Archives",
+      "tagline": "Designer · Researcher",
+      "district": "founders",
+      "kind": "residence",
+      "x": -20,
+      "z": -10,
+      "w": 9,
+      "d": 7.5
+    },
+    {
+      "id": "unreal-workshop",
+      "place": "Unreal Workshop",
+      "title": "Aura",
+      "subtitle": "Unreal Workshop",
+      "tagline": "3D · Environments",
+      "district": "founders",
+      "kind": "residence",
+      "x": 20,
+      "z": -10,
+      "w": 9,
+      "d": 7.5
+    },
+    {
+      "id": "engineering-forge",
+      "place": "Engineering Forge",
+      "title": "Codex",
+      "subtitle": "Engineering Forge",
+      "tagline": "Developer · Automation",
+      "district": "founders",
+      "kind": "residence",
+      "x": -19,
+      "z": 13.5,
+      "w": 9,
+      "d": 7.5
+    },
+    {
+      "id": "post-office",
+      "place": "Post Office",
+      "title": "Scribe",
+      "subtitle": "Post Office",
+      "tagline": "Notes · Summaries",
+      "district": "founders",
+      "kind": "residence",
+      "x": 0,
+      "z": 23.5,
+      "w": 7,
+      "d": 6,
+      "indicatorHeight": 12
+    },
+    {
+      "id": "blender-house",
+      "place": "Blender House",
+      "title": "Blender House",
+      "subtitle": "Shared Workspace",
+      "tagline": "Claude · Codex work here in Blender",
+      "district": "creative",
+      "kind": "workplace",
+      "x": 64,
+      "z": -8,
+      "face": [
+        52,
+        -8
+      ],
+      "w": 9,
+      "d": 7.5
+    },
+    {
+      "id": "unreal-studio",
+      "place": "UE Studio",
+      "title": "UE Studio",
+      "subtitle": "Shared Workspace",
+      "tagline": "Claude · Codex work here in Unreal",
+      "district": "creative",
+      "kind": "workplace",
+      "x": 64,
+      "z": 14,
+      "face": [
+        52,
+        14
+      ],
+      "w": 9,
+      "d": 7.5
+    },
+    {
+      "id": "tripo-stable",
+      "place": "Tripo Stable",
+      "title": "Tripo Stable",
+      "subtitle": "3D Assets",
+      "tagline": "Image to 3D · Texturing · Rigging",
+      "district": "artisan",
+      "kind": "service",
+      "x": -66,
+      "z": -6,
+      "face": [
+        -54,
+        -6
+      ],
+      "w": 11,
+      "d": 8,
+      "modelNote": "White-roofed fantasy stable"
+    },
+    {
+      "id": "runway-cinema",
+      "place": "Runway Cinema",
+      "title": "Runway Cinema",
+      "subtitle": "Video",
+      "tagline": "Generation · Previews",
+      "district": "artisan",
+      "kind": "service",
+      "x": -62,
+      "z": 18,
+      "face": [
+        -52,
+        10
+      ],
+      "w": 10,
+      "d": 9,
+      "modelNote": "Purple-roofed fantasy theater"
+    },
+    {
+      "id": "gemini-observatory",
+      "place": "Gemini Observatory",
+      "title": "Gemini",
+      "subtitle": "Observatory",
+      "tagline": "Planned resident",
+      "district": "heights",
+      "kind": "residence",
+      "x": -16,
+      "z": -72,
+      "face": [
+        0,
+        -60
+      ],
+      "w": 11,
+      "d": 11,
+      "indicatorHeight": 17,
+      "modelNote": "Blue-roofed observatory with a celestial dome"
+    },
+    {
+      "id": "copilot-commandery",
+      "place": "Copilot Commandery",
+      "title": "Copilot",
+      "subtitle": "Commandery",
+      "tagline": "Planned resident",
+      "district": "heights",
+      "kind": "residence",
+      "x": 17,
+      "z": -72,
+      "face": [
+        0,
+        -60
+      ],
+      "w": 12,
+      "d": 9,
+      "indicatorHeight": 16,
+      "modelNote": "Blue-roofed fortified administrative building"
+    },
+    {
+      "id": "deepseek-cottage",
+      "place": "DeepSeek Gothic Cottage",
+      "title": "DeepSeek",
+      "subtitle": "Gothic Cottage",
+      "tagline": "Planned resident",
+      "district": "woods",
+      "kind": "residence",
+      "x": 76,
+      "z": 64,
+      "face": [
+        66,
+        52
+      ],
+      "w": 8,
+      "d": 7,
+      "modelNote": "Dark gothic cottage"
+    }
+  ],
+  "nodes": {
+    "n:creative": [
+      54,
+      0,
+      2
+    ],
+    "n:artisan": [
+      -54,
+      0,
+      4
+    ],
+    "n:stair-w-bottom": [
+      -27.4,
+      0,
+      -40.6
+    ],
+    "n:stair-w-top": [
+      -31.9,
+      8,
+      -47.3
+    ],
+    "n:stair-e-bottom": [
+      27.4,
+      0,
+      -40.6
+    ],
+    "n:stair-e-top": [
+      31.9,
+      8,
+      -47.3
+    ],
+    "n:heights": [
+      0,
+      8,
+      -62
+    ],
+    "n:woods-trail": [
+      56,
+      0,
+      26
+    ],
+    "n:sw-lookout": [
+      -24.5,
+      0,
+      50.3
+    ]
+  },
+  "crossings": [
+    {
+      "id": "nw",
+      "angle": -124
+    },
+    {
+      "id": "ne",
+      "angle": -56
+    },
+    {
+      "id": "east",
+      "angle": 0
+    },
+    {
+      "id": "sw",
+      "angle": 116
+    },
+    {
+      "id": "west",
+      "angle": 180
+    }
+  ],
+  "roads": [
+    {
+      "from": "plaza",
+      "to": "b:town-hall",
+      "kind": "cobble"
+    },
+    {
+      "from": "plaza",
+      "to": "b:library",
+      "kind": "cobble"
+    },
+    {
+      "from": "plaza",
+      "to": "b:unreal-workshop",
+      "kind": "cobble"
+    },
+    {
+      "from": "plaza",
+      "to": "b:engineering-forge",
+      "kind": "cobble"
+    },
+    {
+      "from": "plaza",
+      "to": "b:post-office",
+      "kind": "cobble"
+    },
+    {
+      "from": "x:east:out",
+      "to": "n:creative",
+      "kind": "cobble"
+    },
+    {
+      "from": "n:creative",
+      "to": "b:blender-house",
+      "kind": "cobble"
+    },
+    {
+      "from": "n:creative",
+      "to": "b:unreal-studio",
+      "kind": "cobble"
+    },
+    {
+      "from": "x:west:out",
+      "to": "n:artisan",
+      "kind": "cobble"
+    },
+    {
+      "from": "n:artisan",
+      "to": "b:tripo-stable",
+      "kind": "cobble"
+    },
+    {
+      "from": "n:artisan",
+      "to": "b:runway-cinema",
+      "kind": "cobble"
+    },
+    {
+      "from": "x:nw:out",
+      "to": "n:stair-w-bottom",
+      "kind": "cobble"
+    },
+    {
+      "from": "n:stair-w-bottom",
+      "to": "n:stair-w-top",
+      "kind": "stairs"
+    },
+    {
+      "from": "n:stair-w-top",
+      "to": "n:heights",
+      "kind": "cobble",
+      "via": [
+        [
+          -20,
+          -56
+        ]
+      ]
+    },
+    {
+      "from": "x:ne:out",
+      "to": "n:stair-e-bottom",
+      "kind": "cobble"
+    },
+    {
+      "from": "n:stair-e-bottom",
+      "to": "n:stair-e-top",
+      "kind": "stairs"
+    },
+    {
+      "from": "n:stair-e-top",
+      "to": "n:heights",
+      "kind": "cobble",
+      "via": [
+        [
+          20,
+          -56
+        ]
+      ]
+    },
+    {
+      "from": "n:heights",
+      "to": "b:gemini-observatory",
+      "kind": "cobble"
+    },
+    {
+      "from": "n:heights",
+      "to": "b:copilot-commandery",
+      "kind": "cobble"
+    },
+    {
+      "from": "n:creative",
+      "to": "n:woods-trail",
+      "kind": "dirt"
+    },
+    {
+      "from": "n:woods-trail",
+      "to": "b:deepseek-cottage",
+      "kind": "dirt",
+      "via": [
+        [
+          66,
+          36
+        ],
+        [
+          61,
+          46
+        ],
+        [
+          69,
+          54
+        ]
+      ]
+    },
+    {
+      "from": "x:sw:out",
+      "to": "n:sw-lookout",
+      "kind": "cobble"
+    }
+  ],
+  "plateaus": [
+    {
+      "id": "heights",
+      "height": 8,
+      "outline": [
+        [
+          -47.63,
+          -27.5
+        ],
+        [
+          -42.13,
+          -35.35
+        ],
+        [
+          -35.35,
+          -42.13
+        ],
+        [
+          -27.5,
+          -47.63
+        ],
+        [
+          -18.81,
+          -51.68
+        ],
+        [
+          -9.55,
+          -54.16
+        ],
+        [
+          0.0,
+          -55.0
+        ],
+        [
+          9.55,
+          -54.16
+        ],
+        [
+          18.81,
+          -51.68
+        ],
+        [
+          27.5,
+          -47.63
+        ],
+        [
+          35.35,
+          -42.13
+        ],
+        [
+          42.13,
+          -35.35
+        ],
+        [
+          47.63,
+          -27.5
+        ],
+        [
+          72,
+          -36
+        ],
+        [
+          82,
+          -112
+        ],
+        [
+          -82,
+          -112
+        ],
+        [
+          -72,
+          -36
+        ]
+      ]
+    }
+  ]
+}

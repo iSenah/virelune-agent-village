@@ -73,14 +73,23 @@ test('tasks: cycle detection', () => {
 
 test('residents: status comes only from checks; non-focus residents stay disconnected', () => {
   const { village } = makeVillage();
-  assert.ok(village.residents().every((r) => r.status === 'untested'));
+  assert.ok(village.residents().every((r) => (r.planned ? r.status === 'disconnected' : r.status === 'untested')));
   const all = ['node', 'git', 'codex', 'claude-agent-sdk', 'anthropic-api', 'openai-agents', 'openai-api', 'ollama', 'blender', 'unreal', 'aura'];
   village.setDoctorResultsForTest(all.map((id) => ({ id, name: id, status: 'connected', ready: true, version: null, summary: 'ok', checks: [], costs: '' })));
   const byId = new Map(village.residents().map((r) => [r.id, r]));
   for (const id of ['echo', 'codex', 'claude']) assert.equal(byId.get(id)!.status, 'connected', id);
-  for (const id of ['aura', 'codex-blender', 'claude-blender', 'codex-unreal', 'claude-unreal', 'scribe']) {
+  for (const id of ['aura', 'scribe']) {
     assert.equal(byId.get(id)!.status, 'disconnected', id);
     assert.match(byId.get(id)!.reasons[0], /individual verification/);
+  }
+  // Blender and Unreal profiles of Claude and Codex need their own verification too.
+  for (const p of [...byId.get('claude')!.profiles, ...byId.get('codex')!.profiles]) {
+    assert.equal(p.status, 'disconnected', p.id);
+    assert.match(p.reasons[0], /individual verification/);
+  }
+  for (const id of ['gemini', 'copilot', 'deepseek']) {
+    assert.equal(byId.get(id)!.status, 'disconnected', `${id} is planned, never connected`);
+    assert.match(byId.get(id)!.reasons[0], /Planned resident/);
   }
   village.setDoctorResultsForTest(all.map((id) => ({ id, name: id, status: id === 'codex' ? 'installed' : 'connected', ready: id !== 'codex', version: null, summary: id === 'codex' ? 'not logged in' : 'ok', checks: [], costs: '' })));
   assert.equal(village.residents().find((r) => r.id === 'codex')!.status, 'disconnected');

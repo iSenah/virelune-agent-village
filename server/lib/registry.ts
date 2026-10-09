@@ -25,6 +25,33 @@ export type Resident = {
   verification: { required: boolean };
   permissions: string;
   budget: { perTaskUsd: number; dailyUsd: number; maxTurns: number };
+  /** Planned resident: home reserved, no runtime or provider yet; never connected, never receives messages. */
+  planned: boolean;
+  /** Set on execution profiles: the one real resident this profile belongs to. */
+  parent?: string;
+  /** Shared workplaces this resident works at (from its profiles), e.g. blender-house. */
+  workplaces: string[];
+};
+
+/**
+ * An execution profile: a specialist way for an existing resident to work (e.g. Claude in Blender) with its own
+ * runtime, tools and verification. Not a separate resident: no figure, no own chat, no own paid-use switch.
+ */
+export type Profile = {
+  id: string;
+  resident: string;
+  displayName: string;
+  role: string;
+  workplace: string;
+  capabilities: string[];
+  runtime: string;
+  provider: string;
+  model: string | null;
+  tools: ToolGrant[];
+  requires: string[];
+  verification: { required: boolean };
+  permissions: string;
+  budget: { perTaskUsd: number; dailyUsd: number; maxTurns: number };
 };
 
 export type Runtime = { id: string; displayName: string; kind: string; integration: string };
@@ -46,6 +73,9 @@ export type Playbook = { id: string; displayName: string; steps: { id: string; n
 
 export type Registries = {
   residents: Map<string, Resident>;
+  profiles: Map<string, Profile>;
+  /** Everything that can hold a Tool Gateway session: residents and their execution profiles. */
+  principals: Map<string, Resident>;
   runtimes: Map<string, Runtime>;
   providers: Map<string, Provider>;
   tools: Map<string, ToolServer>;
@@ -141,13 +171,16 @@ function parseGrant(g: any, errors: string[]): ToolGrant | null {
 
 export function parseResident(obj: any): { value: Resident | null; errors: string[] } {
   const v = new V(obj);
-  v.noExtra(['id', 'displayName', 'role', 'capabilities', 'runtime', 'provider', 'model', 'building', 'appearance', 'tools', 'requires', 'focus', 'verification', 'permissions', 'budget', '$comment']);
+  v.noExtra(['id', 'displayName', 'role', 'capabilities', 'runtime', 'provider', 'model', 'building', 'appearance', 'tools', 'requires', 'focus', 'verification', 'permissions', 'budget', 'planned', '$comment']);
   const id = v.str('id', { pattern: ID });
   const displayName = v.str('displayName');
   const role = v.str('role');
   const capabilities = v.strArr('capabilities', false);
-  const runtime = v.str('runtime', { pattern: ID });
-  const provider = v.str('provider', { pattern: ID });
+  const planned = v.bool('planned', false);
+  // Planned residents have no runtime or provider yet.
+  const runtime = planned ? (v.str('runtime', { pattern: ID, optional: true }) ?? '') : v.str('runtime', { pattern: ID });
+  const provider = planned ? (v.str('provider', { pattern: ID, optional: true }) ?? '') : v.str('provider', { pattern: ID });
+  if (planned && obj?.focus === true) v.errors.push('a planned resident cannot be a focus resident');
   const model = v.str('model', { optional: true });
   const building = v.str('building', { pattern: ID });
   const ap = v.sub('appearance');
@@ -172,9 +205,44 @@ export function parseResident(obj: any): { value: Resident | null; errors: strin
   v.errors.push(...b.errors.map((e) => `budget.${e}`));
   if (v.errors.length) return { value: null, errors: v.errors };
   return {
-    value: { id: id!, displayName: displayName!, role: role!, capabilities, runtime: runtime!, provider: provider!, model, building: building!, appearance: { lineage, color, figure }, tools, requires, focus, verification, permissions, budget },
+    value: { id: id!, displayName: displayName!, role: role!, capabilities, runtime: runtime!, provider: provider!, model, building: building!, appearance: { lineage, color, figure }, tools, requires, focus, verification, permissions, budget, planned, workplaces: [] },
     errors: [],
   };
+}
+
+export function parseProfile(obj: any): { value: Profile | null; errors: string[] } {
+  const v = new V(obj);
+  v.noExtra(['id', 'resident', 'displayName', 'role', 'workplace', 'capabilities', 'runtime', 'provider', 'model', 'tools', 'requires', 'verification', 'permissions', 'budget', '$comment']);
+  const id = v.str('id', { pattern: ID });
+  const resident = v.str('resident', { pattern: ID });
+  const displayName = v.str('displayName');
+  const role = v.str('role');
+  const workplace = v.str('workplace', { pattern: ID });
+  const capabilities = v.strArr('capabilities', false);
+  const runtime = v.str('runtime', { pattern: ID });
+  const provider = v.str('provider', { pattern: ID });
+  const model = v.str('model', { optional: true });
+  const toolsRaw = v.raw('tools') ?? [];
+  const tools: ToolGrant[] = [];
+  if (!Array.isArray(toolsRaw)) v.errors.push('tools must be an array');
+  else for (const g of toolsRaw) {
+    const parsed = parseGrant(g, v.errors);
+    if (parsed) tools.push(parsed);
+  }
+  const requires = v.strArr('requires', false);
+  const ver = v.sub('verification');
+  const verification = { required: ver.bool('required', true) };
+  const permissions = v.str('permissions') ?? 'restricted';
+  const b = v.sub('budget');
+  const budget = { perTaskUsd: b.num('perTaskUsd', 1), dailyUsd: b.num('dailyUsd', 5), maxTurns: b.num('maxTurns', 30, 1) };
+  v.errors.push(...b.errors.map((e) => `budget.${e}`));
+  if (v.errors.length) return { value: null, errors: v.errors };
+  return { value: { id: id!, resident: resident!, displayName: displayName!, role: role!, workplace: workplace!, capabilities, runtime: runtime!, provider: provider!, model, tools, requires, verification, permissions, budget }, errors: [] };
+}
+
+/** A profile as a principal for the Tool Gateway and status checks (never a figure, never focus). */
+export function profilePrincipal(p: Profile, parent: Resident): Resident {
+  return { ...p, building: p.workplace, appearance: { ...parent.appearance, figure: false }, focus: false, planned: false, parent: parent.id, workplaces: [] };
 }
 
 export function parseRuntime(obj: any): { value: Runtime | null; errors: string[] } {
@@ -281,11 +349,12 @@ export function loadRegistries(configDir: string): Registries {
   const tools = readDir(path.join(configDir, 'tools'), parseToolServer, errors);
   const playbooks = readDir(path.join(configDir, 'playbooks'), parsePlaybook, errors);
   const residentsRaw = readDir(path.join(configDir, 'residents'), parseResident, errors);
+  const profilesRaw = readDir(path.join(configDir, 'profiles'), parseProfile, errors);
   const residents = new Map<string, Resident>();
-  for (const [id, r] of residentsRaw) {
+  const refCheck = (r: { runtime: string; provider: string; tools: ToolGrant[] }, planned: boolean): string[] => {
     const refErrors: string[] = [];
-    if (!runtimes.has(r.runtime)) refErrors.push(`runtime "${r.runtime}" is not registered`);
-    if (!providers.has(r.provider)) refErrors.push(`provider "${r.provider}" is not registered`);
+    if (!planned || r.runtime) if (!runtimes.has(r.runtime)) refErrors.push(`runtime "${r.runtime}" is not registered`);
+    if (!planned || r.provider) if (!providers.has(r.provider)) refErrors.push(`provider "${r.provider}" is not registered`);
     for (const g of r.tools) {
       const server = tools.get(g.server);
       if (!server) {
@@ -297,10 +366,30 @@ export function loadRegistries(configDir: string): Registries {
         if (!sel.startsWith('risk:') && g.allow.includes(sel) && server.risk[sel] === 'exec') refErrors.push(`exec tool "${sel}" may only be granted under "ask"`);
       }
     }
+    return refErrors;
+  };
+  for (const [id, r] of residentsRaw) {
+    const refErrors = refCheck(r, r.planned);
     if (refErrors.length) errors.push({ file: path.join(configDir, 'residents', `${id}.json`), message: refErrors.join('; ') });
     else residents.set(id, r);
   }
-  return { residents, runtimes, providers, tools, playbooks, errors };
+  const profiles = new Map<string, Profile>();
+  const principals = new Map<string, Resident>(residents);
+  for (const [id, p] of profilesRaw) {
+    const refErrors = refCheck(p, false);
+    const parent = residents.get(p.resident);
+    if (!parent) refErrors.push(`resident "${p.resident}" is not registered`);
+    else if (parent.planned) refErrors.push(`resident "${p.resident}" is only planned`);
+    if (residents.has(id)) refErrors.push(`id "${id}" is already a resident`);
+    if (refErrors.length) {
+      errors.push({ file: path.join(configDir, 'profiles', `${id}.json`), message: refErrors.join('; ') });
+      continue;
+    }
+    profiles.set(id, p);
+    principals.set(id, profilePrincipal(p, parent!));
+    if (!parent!.workplaces.includes(p.workplace)) parent!.workplaces.push(p.workplace);
+  }
+  return { residents, profiles, principals, runtimes, providers, tools, playbooks, errors };
 }
 
 /** Decide whether a resident's grant covers a tool, and how. Default: deny. */

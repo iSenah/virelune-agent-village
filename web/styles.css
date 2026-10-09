@@ -53,7 +53,17 @@ ul { list-style: none; margin: 0; padding: 0; }
 .dot.untested { background: var(--unknown); }
 .residents .name { font-weight: 600; }
 .residents li.group { display: block; margin-top: 10px; padding: 4px 10px; font: 600 11px var(--sans); text-transform: uppercase; letter-spacing: 0.08em; color: var(--gold); border-top: 1px solid rgba(201, 154, 69, 0.18); border-radius: 0; }
-.residents li.group:first-child { margin-top: 0; border-top: 0; }
+.residents li.group:first-child, .residents li.district + li.group { margin-top: 0; border-top: 0; }
+.residents li.district { display: block; margin: 14px 0 2px; padding: 0 10px; font: 600 13px var(--serif); color: var(--ink); cursor: default; }
+.residents li.district:first-child { margin-top: 0; }
+.residents li.workers { display: block; padding: 2px 10px 8px; }
+.dot.planned { background: transparent; border: 1.5px dashed var(--muted); }
+.tag.planned { color: var(--muted); }
+.rw-profiles li { padding: 8px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.05); font-size: 13px; }
+.rw-profiles .hint { margin: 2px 0 0; }
+.rw-archive { margin-top: 6px; font-size: 12px; }
+.rw-archive summary { cursor: pointer; color: var(--gold); }
+.rw-msgs.archived { max-height: 240px; min-height: 0; opacity: 0.85; }
 .residents .why { grid-column: 2; font-size: 12px; color: var(--muted); line-height: 1.35; }
 .tag { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--gold); margin-left: 6px; }
 

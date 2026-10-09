@@ -1,0 +1,23 @@
+{
+  "$comment": "Planned resident: its home is reserved in the village, but no runtime or provider is chosen yet, so it can never be shown as connected or receive messages. It has no figure until its character model arrives.",
+  "id": "copilot",
+  "displayName": "Copilot",
+  "role": "Operations and coordination support (planned resident)",
+  "capabilities": [
+    "coordination",
+    "operations"
+  ],
+  "planned": true,
+  "building": "copilot-commandery",
+  "appearance": {
+    "lineage": "copilot",
+    "color": "#3f62d8",
+    "figure": false
+  },
+  "requires": [],
+  "focus": false,
+  "verification": {
+    "required": true
+  },
+  "permissions": "restricted"
+}
