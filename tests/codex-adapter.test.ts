@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { test } from 'node:test';
 import { CodexAdapter } from '../integrations/adapters/codex.ts';
+import { CODEX_DISABLED_FEATURES, codexLaunchArgs } from '../integrations/runtime-config.ts';
 import { PROJECT_ROOT } from '../server/lib/config.ts';
 import type { Village } from '../server/lib/app.ts';
 import { loadRegistries } from '../server/lib/registry.ts';
@@ -77,7 +78,7 @@ test('Codex replies stream into the chat, are saved, and the thread is resumed f
     msgs = village.chat.list('codex');
     assert.equal(msgs[3].body, 'Hello from the fake Codex: Second message');
     const reqs = entries().filter((e) => e.type === 'request').map((e) => e.method);
-    assert.deepEqual(reqs, ['initialize', 'initialized', 'account/read', 'thread/start', 'turn/start', 'account/read', 'thread/resume', 'turn/start']);
+    assert.deepEqual(reqs, ['initialize', 'initialized', 'mcpServerStatus/list', 'experimentalFeature/list', 'account/read', 'thread/start', 'turn/start', 'account/read', 'thread/resume', 'turn/start']);
     const resume = entries().find((e) => e.method === 'thread/resume');
     assert.equal(resume.params.threadId, 'thr_1', 'the same Codex thread continues the conversation');
     assert.equal(entries().filter((e) => e.type === 'start').length, 1, 'one long-lived app-server per resident');
@@ -97,7 +98,8 @@ test('Codex runs isolated: village Codex home, no API keys, gateway token only i
     assert.equal(start.env.ANTHROPIC_API_KEY, false, 'Anthropic key removed');
     assert.equal(start.env.CODEX_API_KEY, false, 'Codex API key removed');
     assert.equal(start.env.token, true, 'gateway token passed in the environment');
-    assert.deepEqual(start.argv.slice(-3), ['app-server', '-c', 'mcp_servers.village.url="http://127.0.0.1:4317/mcp/codex"']);
+    assert.deepEqual(start.argv.slice(start.argv.indexOf('app-server')), codexLaunchArgs('http://127.0.0.1:4317/mcp/codex'));
+    for (const f of CODEX_DISABLED_FEATURES) assert.ok(start.argv.includes(`features.${f}=false`), `feature ${f} switched off on the command line`);
     assert.ok(!start.argv.some((a: string) => /sk-|token/i.test(a.replace('mcp_servers', ''))), 'no secrets on the command line');
     const thread = entries().find((e) => e.method === 'thread/start').params;
     assert.equal(thread.sandbox, 'workspace-write');
@@ -313,7 +315,7 @@ test('several residents talk to Codex at once, each with its own process, token,
     assert.equal(village.chat.list('codex-blender')[1].body, 'Hello from the fake Codex: Message for Codex Blender');
     const starts = entries().filter((e) => e.type === 'start');
     assert.equal(starts.length, 2);
-    assert.deepEqual(starts.map((s) => s.argv.at(-1)).sort(), ['mcp_servers.village.url="http://127.0.0.1:4317/mcp/codex"', 'mcp_servers.village.url="http://127.0.0.1:4317/mcp/codex-blender"']);
+    assert.deepEqual(starts.map((s) => s.argv.find((a: string) => a.startsWith('mcp_servers.village.url='))).sort(), ['mcp_servers.village.url="http://127.0.0.1:4317/mcp/codex"', 'mcp_servers.village.url="http://127.0.0.1:4317/mcp/codex-blender"']);
   } finally {
     village.close();
   }

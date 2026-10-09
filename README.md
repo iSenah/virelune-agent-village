@@ -77,7 +77,7 @@ npm run codex:sandbox-setup # Windows: one-time Codex sandbox setup for the vill
 
 | Resident | What it needs on this machine |
 | --- | --- |
-| **Codex** | Codex CLI (`npm install -g @openai/codex`), then `npm run codex:login` (choose Sign in with ChatGPT), on Windows `npm run codex:sandbox-setup`, then `npm run codex:verify`. The village uses its **own** Codex home under `data/`, so your personal Codex settings and MCP servers are never loaded. API-key sign-ins are refused. |
+| **Codex** | Codex CLI (`npm install -g @openai/codex`), then `npm run codex:login` (choose Sign in with ChatGPT), on Windows `npm run codex:sandbox-setup`, then `npm run codex:verify`. The village uses its **own** Codex home under `data/`, so your personal Codex settings and MCP servers are never loaded. API-key sign-ins are refused, and Codex's built-in apps (`codex_apps`), plugins, browser and computer use are switched off and checked on every launch. |
 | **Claude** | `ANTHROPIC_API_KEY` in `.env` (paid API; a Claude subscription can't be used by SDK apps). The Claude Agent SDK package is added in the next milestone. |
 | **Echo** | `OPENAI_API_KEY` in `.env` (paid API; no free tier). The OpenAI Agents SDK package is added in the next milestone. |
 
@@ -113,7 +113,7 @@ Residents, runtimes, providers, tool servers and playbooks are JSON manifests in
 npm test
 ```
 
-76 tests cover the registries, event log, task engine, approvals, Echo autonomy, resident chat, the Codex adapter, the API, the village's event-to-visual mapping, the custom models, the village layout, exports and secrets, and the Tool Gateway's security boundaries. Two tests drive the real Codex CLI (isolation, and refusing an unsigned village home); they are reported as skipped (not passed) when Codex is not installed. None of the tests use your Codex sign-in.
+84 tests cover the registries, event log, task engine, approvals, Echo autonomy, resident chat, the Codex adapter, the API, the village's event-to-visual mapping, the custom models, the village layout, exports and secrets, and the Tool Gateway's security boundaries. Three tests drive the real Codex CLI (gateway-only isolation, built-in tool sources switched off, refusing an unsigned village home); they are reported as skipped (not passed) when Codex is not installed. None of the tests use your Codex sign-in.
 
 ## Export without GitHub
 

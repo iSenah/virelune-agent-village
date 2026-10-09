@@ -18,7 +18,7 @@ import type { AdapterContext, AdapterReply, AgentAdapter } from '../../server/li
 import type { Approvals } from '../../server/lib/approvals.ts';
 import type { EventLog } from '../../server/lib/events.ts';
 import { StdioRpcClient, type RpcMessage } from '../jsonrpc-stdio.ts';
-import { codexThreadDefaults, prepareCodexLaunch } from '../runtime-config.ts';
+import { checkCodexIsolation, codexThreadDefaults, prepareCodexLaunch } from '../runtime-config.ts';
 import { which } from '../util.ts';
 
 export type CodexAdapterDeps = {
@@ -140,10 +140,12 @@ export class CodexAdapter implements AgentAdapter {
     }
   }
 
-  /** Stop all Codex processes (village shutdown). */
-  close() {
+  /** Stop all Codex processes (village shutdown). Resolves once they have exited (or after 5 seconds). */
+  close(): Promise<void> {
     clearInterval(this.sweeper);
+    const exits = [...this.sessions.values()].map((s) => s.rpc.exited);
     for (const id of [...this.sessions.keys()]) this.endSession(id);
+    return Promise.race([Promise.all(exits).then(() => {}), new Promise<void>((r) => setTimeout(r, 5000).unref())]);
   }
 
   // ---------- session management ----------
@@ -158,14 +160,15 @@ export class CodexAdapter implements AgentAdapter {
     if (!command) throw new Error('Codex CLI not found on this machine. Install it with "npm install -g @openai/codex" (or set CODEX_PATH), then run the doctor.');
     const token = this.d.issueToken(residentId);
     const launch = prepareCodexLaunch({ dataDir: this.d.dataDir, residentId, gatewayUrl: this.d.gatewayUrl(), token, baseEnv: this.d.env });
-    // Never let Codex pick up an API key from the environment: it would bill per token instead of the plan.
-    delete launch.env.CODEX_API_KEY;
-    delete launch.env.OPENAI_BASE_URL;
     const rpc = new StdioRpcClient(command, [...(this.d.commandArgs ?? []), ...launch.args], { env: launch.env, cwd: this.d.workspaceFor(residentId) });
     let session!: CodexSession;
     const ready = (async () => {
       await rpc.request('initialize', { clientInfo: { name: 'virelune-agent-village', title: 'Virelune Agent Village', version: '2' }, capabilities: null }, this.d.startupTimeoutMs ?? 30_000);
       rpc.notify('initialized');
+      // Check what Codex actually loaded before it is allowed to do anything: only the village gateway,
+      // and none of the built-in features that reach outside the village (e.g. codex_apps).
+      const iso = await checkCodexIsolation(rpc);
+      if (iso.problems.length) throw new IsolationError(iso.problems.join('. '));
     })();
     session = new CodexSession(residentId, rpc, ready);
     rpc.onNotification = (m) => this.onNotification(session, m);
@@ -182,6 +185,7 @@ export class CodexAdapter implements AgentAdapter {
       await ready;
     } catch (e) {
       this.endSession(residentId);
+      if (e instanceof IsolationError) throw new Error(`Virelune refused to use Codex: ${e.message}. The village Codex settings are re-applied on every launch; if this persists, your Codex version may have added a new built-in tool source. Nothing was sent to the model.`);
       const why = (e as Error).message;
       throw new Error(`Codex app-server did not start (${why}).${rpc.stderr ? ` ${tail(rpc.stderr)}` : ''}`);
     }
@@ -321,6 +325,8 @@ export class CodexAdapter implements AgentAdapter {
     this.d.events.append({ type: 'runtime.request_declined', actor: 'system', runId: ctx?.runId ?? null, payload: { resident: s.residentId, what, reason: why, ...detail } });
   }
 }
+
+class IsolationError extends Error {}
 
 /** Who the resident is, in Codex's developer instructions (identity, role, boundaries). */
 function residentInstructions(ctx: AdapterContext, workspace: string): string {

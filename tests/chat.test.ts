@@ -191,6 +191,8 @@ test('the server never registers test adapters or canned replies', () => {
     assert.doesNotMatch(src, /FixtureAdapter|from ['"][^'"]*tests\//, `${path.relative(PROJECT_ROOT, f)} must not use test fixtures`);
   }
   const main = fs.readFileSync(path.join(PROJECT_ROOT, 'server', 'main.ts'), 'utf8');
-  const registered = [...main.matchAll(/new (\w+Adapter)\(/g)].map((m) => m[1]);
+  assert.match(main, /createRuntimeAdapters\(/, 'the server builds its adapters with the shared factory');
+  const factory = fs.readFileSync(path.join(PROJECT_ROOT, 'server', 'lib', 'runtimes.ts'), 'utf8');
+  const registered = [...factory.matchAll(/new (\w+Adapter)\(/g)].map((m) => m[1]);
   assert.deepEqual(registered, ['CodexAdapter'], 'only real runtime adapters are registered');
 });

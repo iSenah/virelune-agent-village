@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { StdioRpcClient } from './jsonrpc-stdio.ts';
+import { checkCodexIsolation, prepareCodexLaunch } from './runtime-config.ts';
 import type { Check, DoctorContext, IntegrationResult, IntegrationStatus } from './types.ts';
 import { findPackage, firstLine, httpJson, run, which } from './util.ts';
 
@@ -39,9 +40,12 @@ export async function checkCodex(ctx: DoctorContext): Promise<IntegrationResult>
     checks.push({ name: 'codex executable', result: 'fail', detail: ctx.env.CODEX_PATH ? `CODEX_PATH not found: ${ctx.env.CODEX_PATH}` : 'not on PATH' });
     return result('codex', name, costs, checks, 'unavailable', false, null, 'Codex CLI not found. Install it (npm install -g @openai/codex) or set CODEX_PATH.');
   }
-  const home = villageCodexHome(ctx);
-  fs.mkdirSync(home, { recursive: true });
-  const env = { ...ctx.env, CODEX_HOME: home };
+  // Exactly the launch the runtime adapter uses (same village Codex home, config, flags and environment),
+  // so the doctor checks what the village will actually run.
+  const launch = prepareCodexLaunch({ dataDir: ctx.dataDir, residentId: 'codex', gatewayUrl: `http://127.0.0.1:${ctx.env.VILLAGE_PORT || 4317}`, token: 'doctor-check-only', baseEnv: ctx.env });
+  const env = launch.env;
+  const workspace = ctx.workspace ?? path.join(ctx.dataDir, 'workspaces', 'codex');
+  fs.mkdirSync(workspace, { recursive: true });
   const v = await run(bin, ['--version'], { env, timeoutMs: 15_000 });
   const version = v.code === 0 ? firstLine(v.stdout).replace(/^codex-cli\s*/, '') : null;
   checks.push({ name: 'codex --version', result: version ? 'pass' : 'fail', detail: version ?? firstLine(v.stderr || v.error || '') });
@@ -55,7 +59,8 @@ export async function checkCodex(ctx: DoctorContext): Promise<IntegrationResult>
   let handshake = false;
   let planLogin: boolean | null = null; // null = could not tell
   let sandboxReady = process.platform !== 'win32';
-  const rpc = new StdioRpcClient(bin, ['app-server'], { env });
+  let isolated = false;
+  const rpc = new StdioRpcClient(bin, launch.args, { env, cwd: workspace });
   rpc.onRequest = () => {
     throw new Error('doctor does not accept server requests');
   };
@@ -72,10 +77,9 @@ export async function checkCodex(ctx: DoctorContext): Promise<IntegrationResult>
       planLogin = type === 'chatgpt';
       checks.push({ name: 'sign-in type (village needs a ChatGPT plan login)', result: planLogin ? 'pass' : 'fail', detail: type === 'chatgpt' ? `ChatGPT plan${acct.account.planType ? ` (${acct.account.planType})` : ''}` : type === 'apiKey' ? 'API key: billed per token, refused by the village' : type ? `${type}: not supported` : 'not signed in' });
     }
-    const mcp = await rpc.request('mcpServerStatus/list', {}, 30_000);
-    const names = (mcp?.data ?? []).map((s: any) => s.name);
-    const onlyGateway = names.every((n: string) => n === 'village');
-    checks.push({ name: 'MCP isolation (village Codex home)', result: onlyGateway ? 'pass' : 'fail', detail: names.length ? `MCP servers visible to Codex: ${names.join(', ')}` : 'no MCP servers inherited' });
+    const iso = await checkCodexIsolation(rpc);
+    isolated = iso.problems.length === 0;
+    checks.push({ name: 'MCP isolation (village launch settings)', result: isolated ? 'pass' : 'fail', detail: isolated ? `only the village gateway${iso.servers.length ? ` (${iso.servers.join(', ')})` : ''}; built-in apps, plugins, browser and computer use are off` : iso.problems.join('. ') });
     if (process.platform === 'win32') {
       const sb = await rpc.request('windowsSandbox/readiness', {}, 15_000).catch((e: Error) => ({ error: e.message }));
       sandboxReady = sb?.status === 'ready';
@@ -94,6 +98,9 @@ export async function checkCodex(ctx: DoctorContext): Promise<IntegrationResult>
   if (ready && planLogin === false) {
     ready = false;
     summary = 'The village Codex home is signed in with an API key (billed per token). Virelune only uses your ChatGPT plan: run npm run codex:login and choose "Sign in with ChatGPT".';
+  } else if (ready && !isolated) {
+    ready = false;
+    summary = 'Codex loaded tools from outside the village gateway, so the village will not use it. See the MCP isolation check.';
   } else if (ready && !sandboxReady) {
     ready = false;
     summary = "Codex's Windows sandbox is not set up, so workspace limits could not be enforced. Run: npm run codex:sandbox-setup";

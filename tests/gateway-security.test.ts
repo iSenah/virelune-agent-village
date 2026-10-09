@@ -5,7 +5,7 @@ import type http from 'node:http';
 import path from 'node:path';
 import { after, before, test } from 'node:test';
 import { StdioRpcClient } from '../integrations/jsonrpc-stdio.ts';
-import { prepareCodexLaunch, GATEWAY_TOKEN_ENV } from '../integrations/runtime-config.ts';
+import { CODEX_DISABLED_FEATURES, prepareCodexLaunch, GATEWAY_TOKEN_ENV } from '../integrations/runtime-config.ts';
 import { which } from '../integrations/util.ts';
 import { createServer } from '../server/lib/api.ts';
 import type { Village } from '../server/lib/app.ts';
@@ -192,7 +192,8 @@ test('Codex launch config: only the gateway, no API keys, token only in the envi
     const toml = fs.readFileSync(path.join(launch.codexHome, 'config.toml'), 'utf8');
     assert.equal((toml.match(/\[mcp_servers\./g) ?? []).length, 1);
     assert.ok(!toml.includes('tok123'), 'the token must not be written to disk');
-    assert.deepEqual(launch.args, ['app-server', '-c', 'mcp_servers.village.url="http://127.0.0.1:4317/mcp/codex"']);
+    assert.deepEqual(launch.args.slice(0, 3), ['app-server', '-c', 'mcp_servers.village.url="http://127.0.0.1:4317/mcp/codex"']);
+    for (const f of CODEX_DISABLED_FEATURES) assert.ok(launch.args.includes(`features.${f}=false`), `${f} switched off`);
     assert.ok(!launch.args.join(' ').includes('tok123'), 'the token must not be on the command line');
   } finally {
     fs.rmSync(dataDir, { recursive: true, force: true });

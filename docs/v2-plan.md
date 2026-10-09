@@ -26,7 +26,7 @@ Smaller notes for later: the browser loads up to 5,000 past events at startup (f
 ## Phases
 
 1. **Interactive resident chat** (done). Every resident opens from its figure, its building, or the residents list. The window has Chat, Tasks, Approvals and Profile tabs. History is stored in Village Hall's database. A message is delivered only to a connected resident with an enabled adapter; otherwise it is saved as "not delivered" with the reason, and nothing replies.
-2. **Real agent integrations.** 2A (done, waiting on your PC check): Codex through the Codex app-server, using the isolated Codex home and the Tool Gateway. Then Claude (Claude Agent SDK, Anthropic API key) and Echo (OpenAI Agents SDK, OpenAI API key), each behind a per-resident paid-use switch. Aura, Blender and Unreal MCP are investigated with real handshakes and stay disconnected until those pass.
+2. **Real agent integrations.** 2A (built; Windows fixes in; waiting on your PC check): Codex through the Codex app-server, using the isolated Codex home and the Tool Gateway. Then Claude (Claude Agent SDK, Anthropic API key) and Echo (OpenAI Agents SDK, OpenAI API key), each behind a per-resident paid-use switch. Aura, Blender and Unreal MCP are investigated with real handshakes and stay disconnected until those pass.
 3. **Supervised delegation.** Echo proposes a plan; you approve it; tasks run Echo → Claude → Codex → Echo in `virelune-sandbox`, every step an event.
 4. **Activity visualization.** Building lights, resident indicators and notifications for chat runs, task runs and approvals, keeping ambient life separate from real work.
 
@@ -44,7 +44,7 @@ Smaller notes for later: the browser loads up to 5,000 past events at startup (f
 
 Codex now answers through `integrations/adapters/codex.ts`, built against the protocol that codex-cli 0.161.0 prints with `codex app-server generate-ts`.
 
-- **Same isolation as V1.** Each Codex resident gets its own `codex app-server` process using the village Codex home (`data\runtime\codex-home`). Your personal Codex config, sessions and MCP servers are never loaded. The only MCP server is the village Tool Gateway, reached with a per-session token kept only in the process environment. The gateway URL is also passed on the command line, so Codex residents never race on the shared config file.
+- **Same isolation as V1.** Each Codex resident gets its own `codex app-server` process using the village Codex home (`data\runtime\codex-home`). Your personal Codex config, sessions and MCP servers are never loaded. The only MCP server is the village Tool Gateway, reached with a per-session token kept only in the process environment. The gateway URL is also passed on the command line, so Codex residents never race on the shared config file. Codex's built-in tool sources (apps / `codex_apps`, plugins, browser and computer use) are switched off on every launch, and the adapter checks what Codex actually loaded before using it.
 - **Your ChatGPT plan only.** Before every reply the adapter reads the village sign-in. No sign-in, or an API-key sign-in (billed per token), is refused before any request. OpenAI, Anthropic and Codex API keys are removed from Codex's environment. There is no fallback to another provider.
 - **Workspace boundaries.** Threads run in the resident's workspace with sandbox `workspace-write` and approval policy `untrusted`. Codex must ask before changing files and before running anything that is not a known read-only command. Each ask becomes a village approval, shown inside the chat with the exact command or diff. Unanswered asks are declined after 5 minutes. Requests aimed outside the workspace are declined without asking, and requests for extra permissions are never granted.
 - **Windows sandbox.** On Windows, Codex's sandbox needs a one-time setup. Until Codex reports it ready, the doctor marks Codex not ready and the adapter refuses to work (`npm run codex:sandbox-setup` fixes it).
@@ -52,57 +52,66 @@ Codex now answers through `integrations/adapters/codex.ts`, built against the pr
 - **Activity.** Commands Codex runs, files it changes, tools it calls and anything declined automatically are recorded as events and appear in the activity feed.
 - **Variants stay locked.** Codex · Blender and Codex · Unreal use the same adapter, but stay disconnected until their own Blender and Unreal verification passes. Connecting Codex does not unlock them.
 
+### First Windows verification: what went wrong, and the fixes
+
+Your first run on Windows (Codex 0.162.0, ChatGPT Plus, sandbox set up) found four real problems:
+
+| What you saw | Cause | Fix |
+| --- | --- | --- |
+| MCP isolation failed: `codex_apps` visible | Codex 0.16x turns on a built-in **apps** feature by default. With a ChatGPT sign-in it adds `codex_apps`, an MCP server for your ChatGPT connectors. It comes from Codex itself, not from any config file, so a separate Codex home does not stop it. Other built-in features (plugins, remote plugins, browser use, computer use, in-app browser) are also on by default and could give Codex tools outside the village | Every launch switches these features off, both in the village Codex `config.toml` and on the command line. Before Codex may do anything, the adapter asks Codex what it actually loaded. It refuses, with no model request, if anything besides the village gateway is there or any of those features is still on. The doctor runs the same check |
+| Doctor said the sandbox was ready; the adapter said it was not set up | The sandbox setup records itself in the village Codex `config.toml` (its `[windows]` section). The adapter **overwrote** that file on every launch, erasing it | The village now edits only its own clearly marked block (features, the gateway, and removing any other MCP servers, apps or plugins) and keeps everything else Codex writes. Because the old version already erased the setup, run the sandbox setup once more (step 5 below) |
+| `codex:verify` crashed deleting its temp folder (`EPERM`) | Verify used a temporary folder as Codex's workspace and deleted it while Codex was still shutting down inside it. Windows will not delete a folder a running program is using | Verify now uses your real workspace and only a throwaway database. It waits for Codex to exit before cleaning up, retries, and never crashes on cleanup |
+| Did verify check what the village runs? | No. The doctor started Codex with plain settings, and verify used a different workspace | One shared launch definition is now used by the doctor, the adapter, sandbox setup and verify. Verify builds its adapter with the same code as the server. A test checks that the doctor's launch matches the adapter's exactly |
+
+Nothing in your personal Codex setup (`%USERPROFILE%\.codex`) is read or changed. All of this happens in the village Codex home under `data\runtime\codex-home`. The workspace boundary, approvals and ChatGPT-only sign-in checks are unchanged, and the Windows sandbox check is just as strict.
+
+You can delete any leftover `virelune-codex-verify-*` folders in `%TEMP%`.
+
 ### What is verified, and what is not yet
 
 | Check | Status |
 | --- | --- |
 | Adapter logic: streaming, saving, resume, stop, timeouts, crashes, sign-in refusal, approvals, workspace boundary, several residents at once | Automated tests against a protocol-faithful fake app-server |
-| Real Codex 0.161.0: starts, handshakes, refuses an unsigned village home before any request; launch flags load only the village gateway | Automated tests against the real Codex CLI (skipped where Codex is not installed) |
-| A real Codex reply through the village | **Not yet verified.** The cloud workspace cannot sign in to OpenAI, so this happens on your PC (steps below) |
-| A real approved file operation in virelune-sandbox | **Not yet verified.** Also on your PC (step 9 below) |
+| The four Windows issues above | Regression tests (`tests/codex-windows-regressions.test.ts`) that fail on the old behaviour |
+| Real Codex: starts, refuses an unsigned home, loads only the village gateway, and reports apps, plugins, browser and computer use **off** under the village launch settings | Automated tests against the real Codex CLI 0.161.0 (skipped where Codex is not installed) |
+| `codex_apps` absent while signed in with ChatGPT | **To verify on your PC** (step 6). Cloud tests cannot sign in to ChatGPT. If Codex ever shows it anyway, the village refuses to use Codex rather than continuing |
+| A real Codex reply through the village, and an approved file operation in virelune-sandbox | **To verify on your PC** (steps 6 to 8) |
 
 ## Verify your first real Codex conversation (Windows)
 
-Open **PowerShell** and run these one at a time. Replace the folder paths with where GitHub Desktop cloned your repos (often `C:\Users\<you>\Documents\GitHub\...`).
+Run these in **PowerShell**, one at a time. You already installed Codex, signed in and set up the sandbox once.
 
-1. Pull the latest code: in GitHub Desktop, select `virelune-agent-village`, then **Fetch origin** and **Pull origin**. Do the same for `virelune-sandbox`.
-2. Go to the project and check Node (22.18 or newer):
+1. Pull the fixes: in GitHub Desktop select `virelune-agent-village`, **Fetch origin**, then **Pull origin**.
+2. Stop the village if it is running (Ctrl+C in its window), then go to the project:
    ```powershell
    cd "$HOME\Documents\GitHub\virelune-agent-village"
-   node --version
    ```
-3. Install the Codex CLI, then open a **new** PowerShell window in the project folder and check it:
-   ```powershell
-   npm install -g @openai/codex
-   codex --version
-   ```
-4. Point the village at your sandbox clone. Run `notepad .env` and set this line (create `.env` with `powershell -ExecutionPolicy Bypass -File scripts\setup.ps1` if it does not exist):
-   ```
-   VILLAGE_SANDBOX_DIR=C:\Users\<you>\Documents\GitHub\virelune-sandbox
-   ```
-   If both repos sit side by side in the same folder, you can leave it empty; the village finds `..\virelune-sandbox` by itself.
-5. Sign Codex in for the village only, and choose **Sign in with ChatGPT** in the browser that opens:
-   ```powershell
-   npm run codex:login
-   ```
-6. Set up Codex's Windows sandbox for the village (one time):
+3. Check the sandbox folder setting. Run `notepad .env`: `VILLAGE_SANDBOX_DIR` should be your virelune-sandbox clone (or empty if the two repos sit side by side).
+4. Optional: confirm the sign-in is still the ChatGPT one. Run `npm run codex:login` only if step 6 says otherwise.
+5. Set up the Windows sandbox **once more**, because the old version erased the setup:
    ```powershell
    npm run codex:sandbox-setup
    ```
-   If it reports a problem, try `npm run codex:sandbox-setup -- --elevated` (Windows asks for administrator permission).
-7. Check the whole chain from the command line. Codex's reply is printed as it streams:
+   It should end with "Done: the Codex sandbox is ready" (or "already set up"). If it fails, run `npm run codex:sandbox-setup -- --elevated`.
+6. Run the full check and one real reply:
    ```powershell
    npm run codex:verify
    ```
-   It should end with "Verified: a genuine Codex reply". This uses your ChatGPT plan's Codex allowance, not an API bill, and saves nothing to the village.
-8. Start the village and talk to Codex:
+   Expected:
+   - `PASS  sign-in type (village needs a ChatGPT plan login): ChatGPT plan (plus)`
+   - `PASS  MCP isolation (village launch settings): only the village gateway (village); built-in apps, plugins, browser and computer use are off`
+   - `PASS  Windows sandbox readiness: ready`
+   - Codex's sentence streams in, ending with `Verified: a genuine Codex reply`.
+
+   If MCP isolation still fails, copy the whole output to me. The village will not use Codex until it passes.
+7. Start the village and talk to Codex:
    ```powershell
    npm start
    ```
-   Open http://127.0.0.1:4317, press **Check integrations**, click Codex at the Engineering Forge, type a message and press Enter. The reply streams in. Close the browser tab, stop the village with Ctrl+C, run `npm start` again, reopen the page and click Codex: the conversation is still there.
-9. A small approved file operation in the sandbox. Ask Codex:
+   Open http://127.0.0.1:4317, press **Check integrations**, click Codex at the Engineering Forge, send a message and watch the reply stream in. Stop the village (Ctrl+C), run `npm start` again, reopen the page and click Codex: the conversation is still there.
+8. The approved file operation. Ask Codex:
    > Create a file named hello-from-virelune.txt in the workspace containing one line: Hello from Virelune.
 
-   An approval card appears in the chat showing the file and its contents. Press **Approve**. The file appears in your virelune-sandbox folder, and the activity feed shows "Codex changed hello-from-virelune.txt". Try asking again and pressing **Deny**: Codex says it was declined and no file is written. Commit or delete the file in GitHub Desktop afterwards. It is only in your local clone until you push.
+   An approval card appears in the chat with the file and its contents. Press **Approve**: the file appears in your virelune-sandbox folder, and the activity feed shows "Codex changed hello-from-virelune.txt". Ask again for a second file and press **Deny**: no file is written, and Codex says it was declined. Afterwards, discard or commit the file in GitHub Desktop.
 
-If any step fails, the chat, `npm run codex:verify` or **Check integrations → Integrations** tab says why and which step to repeat. You can send me that text.
+If any step fails, send me the exact text from the terminal or the chat.

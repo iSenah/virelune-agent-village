@@ -3,14 +3,15 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { CodexAdapter } from '../integrations/adapters/codex.ts';
 import { checkCodex, runAllChecks, villageCodexHome } from '../integrations/checks.ts';
 import type { DoctorReport, IntegrationResult } from '../integrations/types.ts';
 import { StdioRpcClient } from '../integrations/jsonrpc-stdio.ts';
+import { prepareCodexLaunch } from '../integrations/runtime-config.ts';
 import { which } from '../integrations/util.ts';
 import { createServer } from './lib/api.ts';
 import { Village } from './lib/app.ts';
 import { loadConfig, PROJECT_ROOT } from './lib/config.ts';
+import { createRuntimeAdapters } from './lib/runtimes.ts';
 import { buildZip, collectFiles, findSecrets } from './lib/zip.ts';
 
 const [, , command = 'help', ...rest] = process.argv;
@@ -21,7 +22,7 @@ const ICON: Record<string, string> = { connected: '[connected]    ', authenticat
 async function doctor() {
   const config = loadConfig();
   const startedAt = new Date().toISOString();
-  const integrations = await runAllChecks({ env: config.env, projectRoot: PROJECT_ROOT, dataDir: config.dataDir, live: !flags.has('--offline') });
+  const integrations = await runAllChecks({ env: config.env, projectRoot: PROJECT_ROOT, dataDir: config.dataDir, live: !flags.has('--offline'), workspace: config.sandboxDir ?? path.join(config.dataDir, 'workspaces', 'codex') });
   const report: DoctorReport = { machine: config.machineName, platform: `${process.platform} ${os.release()} ${process.arch}`, node: process.versions.node, startedAt, finishedAt: new Date().toISOString(), live: !flags.has('--offline'), integrations };
   if (flags.has('--json')) {
     process.stdout.write(JSON.stringify(report));
@@ -73,39 +74,35 @@ function codexLogin() {
   console.log('Your personal Codex settings and MCP servers are not used by the village.');
   console.log('Choose "Sign in with ChatGPT". The village refuses API-key sign-ins, which are billed per token.\n');
   const isCmd = process.platform === 'win32' && /\.(cmd|bat)$/i.test(bin);
-  const child = spawn(isCmd ? process.env.ComSpec || 'cmd.exe' : bin, isCmd ? ['/d', '/s', '/c', `"${bin}" login`] : ['login'], { stdio: 'inherit', env: { ...process.env, CODEX_HOME: home }, windowsVerbatimArguments: isCmd });
+  const child = spawn(isCmd ? process.env.ComSpec || 'cmd.exe' : bin, isCmd ? ['/d', '/s', '/c', `"${bin}" login`] : ['login'], { stdio: 'inherit', env: { ...process.env, CODEX_HOME: home, OPENAI_API_KEY: undefined, CODEX_API_KEY: undefined }, windowsVerbatimArguments: isCmd });
   child.on('exit', (code) => process.exit(code ?? 1));
 }
 
 /**
- * One real Codex conversation turn through the village adapter, printed as it streams. Uses the village Codex
- * home (your village sign-in) and an empty scratch workspace; nothing is saved to the village database.
+ * One real Codex conversation turn through the village adapter, printed as it streams. It uses exactly what the
+ * village server uses: the same adapter factory, village Codex home, launch settings and workspace. Only the
+ * conversation itself goes to a scratch database that is deleted afterwards.
  */
 async function codexVerify() {
   const config = loadConfig();
-  console.log(`\nVerifying Codex for Virelune Agent Village on ${config.machineName}\n`);
-  const check = await checkCodex({ env: config.env, projectRoot: PROJECT_ROOT, dataDir: config.dataDir, live: true });
+  const workspace = config.sandboxDir ?? path.join(config.dataDir, 'workspaces', 'codex');
+  console.log(`\nVerifying Codex for Virelune Agent Village on ${config.machineName}`);
+  console.log(`Workspace: ${workspace}\n`);
+  const check = await checkCodex({ env: config.env, projectRoot: PROJECT_ROOT, dataDir: config.dataDir, live: true, workspace });
   for (const c of check.checks) console.log(`  ${c.result === 'pass' ? 'PASS' : c.result === 'skip' ? 'SKIP' : 'FAIL'}  ${c.name}: ${c.detail}`);
-  if (check.status !== 'connected') {
-    console.error(`\nCodex is ${check.status}: ${check.summary}`);
+  if (!check.ready) {
+    console.error(`\nCodex is not ready: ${check.summary}`);
     process.exit(1);
   }
   const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'virelune-codex-verify-'));
-  const village = new Village({ ...config, dataDir: scratch, dbPath: path.join(scratch, 'verify.db'), layoutFile: path.join(scratch, 'layout.json'), sandboxDir: null }, { isResidentActive: (id) => id === 'codex' });
+  let port = 0;
+  // Same config (data folder, Codex home, sandbox folder); only the database is a throwaway.
+  const village = new Village({ ...config, dbPath: path.join(scratch, 'verify.db'), layoutFile: path.join(scratch, 'layout.json') }, { isResidentActive: (id) => id === 'codex', adapters: (v) => createRuntimeAdapters(v, () => `http://127.0.0.1:${port}`) });
   village.start();
   const server = createServer(village);
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
-  const port = (server.address() as any).port;
-  const adapter = new CodexAdapter({
-    dataDir: config.dataDir, // the village Codex home and its sign-in
-    env: config.env,
-    events: village.events,
-    approvals: village.approvals,
-    issueToken: (id) => village.gateway.issueToken(id),
-    revokeToken: (id) => village.gateway.revokeToken(id),
-    gatewayUrl: () => `http://127.0.0.1:${port}`,
-    workspaceFor: () => path.join(scratch, 'workspace'),
-  });
+  port = (server.address() as any).port;
+  const adapter = village.adapters.get('codex-app-server')!;
   const resident = village.registries.residents.get('codex')!;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(new Error('no reply within 3 minutes')), 180_000);
@@ -114,16 +111,20 @@ async function codexVerify() {
     process.stdout.write('\nCodex: ');
     const out = await adapter.reply({ resident, runId: 'verify', message: 'This is a connection test from Virelune Agent Village. Reply with one short friendly sentence that includes the words "village connection OK". Do not run commands or change files.', history: [], threadState: null, signal: controller.signal, onDelta: (t) => process.stdout.write(t) });
     console.log(`\n\nVerified: a genuine Codex reply (${out.text.length} characters) through the village adapter.`);
-    console.log('Now open the village, click Codex at the Engineering Forge, and say hello.');
+    console.log('Now start the village (npm start), click Codex at the Engineering Forge, and say hello.');
   } catch (e) {
     console.error(`\n\nCodex did not reply: ${(e as Error).message}`);
     code = 1;
   } finally {
     clearTimeout(timer);
-    adapter.close();
-    server.close();
+    await adapter.close?.(); // wait for Codex to exit: Windows cannot delete files a running process still uses
+    await new Promise<void>((r) => server.close(() => r()));
     village.close();
-    fs.rmSync(scratch, { recursive: true, force: true });
+    try {
+      fs.rmSync(scratch, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
+    } catch (e) {
+      console.warn(`(Could not delete the scratch folder ${scratch}: ${(e as Error).message}. It is safe to delete it yourself.)`);
+    }
   }
   process.exit(code);
 }
@@ -141,12 +142,12 @@ async function codexSandboxSetup() {
     process.exit(1);
   }
   const mode = flags.has('--elevated') ? 'elevated' : 'unelevated';
-  const home = villageCodexHome({ env: config.env, projectRoot: PROJECT_ROOT, dataDir: config.dataDir, live: false });
-  fs.mkdirSync(home, { recursive: true });
-  const workspace = config.sandboxDir ?? path.join(config.dataDir, 'workspaces');
+  const workspace = config.sandboxDir ?? path.join(config.dataDir, 'workspaces', 'codex');
   fs.mkdirSync(workspace, { recursive: true });
+  // The same launch settings the village runs Codex with (village Codex home, gateway only, features off).
+  const launch = prepareCodexLaunch({ dataDir: config.dataDir, residentId: 'codex', gatewayUrl: `http://127.0.0.1:${config.port}`, token: 'sandbox-setup-only', baseEnv: config.env });
   console.log(`Setting up Codex's Windows sandbox (${mode}) for the village Codex home.${mode === 'elevated' ? ' Windows will ask for administrator permission.' : ''}`);
-  const rpc = new StdioRpcClient(bin, ['app-server'], { env: { ...config.env, CODEX_HOME: home } });
+  const rpc = new StdioRpcClient(bin, launch.args, { env: launch.env, cwd: workspace });
   rpc.onRequest = () => {
     throw new Error('not supported');
   };
@@ -175,6 +176,7 @@ async function codexSandboxSetup() {
     code = 1;
   } finally {
     rpc.close();
+    await rpc.exited;
   }
   process.exit(code);
 }

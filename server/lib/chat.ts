@@ -54,7 +54,7 @@ export interface AgentAdapter {
   readonly runtimeKind: string;
   reply(ctx: AdapterContext): Promise<AdapterReply>;
   /** Release processes and connections (village shutdown). */
-  close?(): void;
+  close?(): void | Promise<void>;
 }
 
 type Deps = {

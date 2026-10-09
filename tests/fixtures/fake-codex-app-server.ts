@@ -13,9 +13,34 @@ const record = (o: unknown) => logFile && fs.appendFileSync(logFile, JSON.string
 record({
   type: 'start',
   argv: process.argv.slice(2),
+  pid: process.pid,
   cwd: process.cwd(),
   env: { CODEX_HOME: process.env.CODEX_HOME ?? null, OPENAI_API_KEY: !!process.env.OPENAI_API_KEY, ANTHROPIC_API_KEY: !!process.env.ANTHROPIC_API_KEY, CODEX_API_KEY: !!process.env.CODEX_API_KEY, token: !!process.env.VILLAGE_GATEWAY_TOKEN },
 });
+
+// The plain CLI subcommands the doctor runs.
+const argv = process.argv.slice(2);
+if (argv[0] === '--version') {
+  process.stdout.write('codex-cli 0.162.0\n');
+  process.exit(0);
+}
+if (argv[0] === 'login' && argv[1] === 'status') {
+  process.stdout.write(mode === 'nologin' ? 'Not logged in\n' : 'Logged in using ChatGPT\n');
+  process.exit(mode === 'nologin' ? 1 : 0);
+}
+
+// Like Codex 0.16x: built-in features are ON unless switched off with `-c features.<name>=false`, and with a
+// ChatGPT sign-in the "apps" feature adds the built-in codex_apps MCP server.
+const BUILTIN_FEATURES = ['apps', 'enable_mcp_apps', 'plugins', 'remote_plugin', 'browser_use', 'browser_use_external', 'browser_use_full_cdp_access', 'computer_use', 'in_app_browser', 'skill_mcp_dependency_install', 'shell_tool'];
+const forcedOn = (process.env.FAKE_FEATURES_FORCED_ON ?? '').split(',').filter(Boolean);
+const featureOn = (f: string) => forcedOn.includes(f) || !argv.includes(`features.${f}=false`);
+const configToml = () => {
+  try {
+    return fs.readFileSync(path.join(process.env.CODEX_HOME ?? '', 'config.toml'), 'utf8');
+  } catch {
+    return '';
+  }
+};
 
 if (mode === 'startup-crash') {
   process.stderr.write('fatal: could not load the village Codex home\n');
@@ -140,8 +165,20 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
       runTurn(m.params.threadId, turnId, text);
       return;
     }
-    case 'windowsSandbox/readiness':
-      return reply({ status: process.env.FAKE_WIN_SANDBOX ?? 'ready' });
+    case 'windowsSandbox/readiness': {
+      // "from-config": ready only while the [windows] section written by the sandbox setup is in config.toml.
+      const w = process.env.FAKE_WIN_SANDBOX ?? 'ready';
+      return reply({ status: w === 'from-config' ? (/^\[windows\]/m.test(configToml()) ? 'ready' : 'notConfigured') : w });
+    }
+    case 'mcpServerStatus/list': {
+      const signedInChatgpt = mode !== 'nologin' && mode !== 'apikey';
+      const names = ['village', ...(featureOn('apps') && signedInChatgpt ? ['codex_apps'] : []), ...(process.env.FAKE_EXTRA_MCP ?? '').split(',').filter(Boolean)];
+      return reply({ data: names.map((name) => ({ name, tools: {} })), nextCursor: null });
+    }
+    case 'experimentalFeature/list':
+      return reply({ data: BUILTIN_FEATURES.map((name) => ({ name, stage: 'stable', enabled: featureOn(name), defaultEnabled: true })) });
+    case 'getAuthStatus':
+      return reply(mode === 'nologin' ? { authMethod: null } : { authMethod: mode === 'apikey' ? 'apikey' : 'chatgpt' });
     case 'turn/interrupt':
       interrupted.add(m.params?.turnId);
       return reply({});

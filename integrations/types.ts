@@ -26,6 +26,8 @@ export type DoctorContext = {
   dataDir: string;
   /** Make free live auth calls (listing models). Never generates tokens. */
   live: boolean;
+  /** The folder Codex works in (same as the runtime adapter), if known. */
+  workspace?: string;
 };
 
 export type DoctorReport = {
