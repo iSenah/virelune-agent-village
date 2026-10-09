@@ -133,6 +133,7 @@ export function createServer(village: Village): http.Server {
           return { server: g.server, displayName: t?.displayName ?? g.server, allow: g.allow, ask: g.ask, exclusive: t?.exclusive ?? false, classifiedTools: t ? Object.keys(t.risk).length : 0 };
         }),
       },
+      billing: village.billing.info(id),
       tasks: village.tasks.list().filter((t) => t.assignee === id),
       approvals: village.approvals.list('pending').filter((a) => a.resident === id),
       chat: { messages: village.chat.list(id, 'main', limit), busy: village.chat.isBusy(id), partial: village.chat.partial(id), blocker: village.chat.deliveryBlocker(id) },
@@ -159,6 +160,14 @@ export function createServer(village: Village): http.Server {
     send(res, 201, { message: village.chat.send(decodeURIComponent(p.id), b.body, 'human') });
   });
   route('POST', '/api/residents/:id/chat/stop', (_q, res, p) => send(res, 200, { stopped: village.chat.stop(decodeURIComponent(p.id), 'human') }));
+  // Paid API safeguards. Turning paid use on needs { allowed: true, acknowledge: true }; off always works.
+  route('PUT', '/api/residents/:id/paid-use', async (req, res, p) => {
+    const b = await readJson(req);
+    const id = decodeURIComponent(p.id);
+    if (!village.registries.residents.has(id)) throw new HttpError(404, `resident "${id}" not found`);
+    send(res, 200, { billing: village.billing.set(id, b.allowed, b.acknowledge, 'human') });
+  });
+  route('POST', '/api/paid-use/disable-all', (_q, res) => send(res, 200, { disabled: village.billing.disableAll('human') }));
   route('PUT', '/api/settings/echo-autonomy', async (req, res) => {
     const b = await readJson(req);
     send(res, 200, { autonomy: village.settings.setEchoAutonomy(String(b.level ?? ''), 'human') });

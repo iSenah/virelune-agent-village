@@ -129,6 +129,21 @@ table.rw-profile .hint { margin: 2px 0 0; }
 .chips { display: inline-flex; gap: 4px; flex-wrap: wrap; }
 .chip { font-size: 11px; padding: 2px 7px; border-radius: 999px; background: rgba(255, 255, 255, 0.07); }
 .tag.busy { color: var(--ok); }
+.tag.paid { color: #f0b35a; }
+.btn.danger { background: #8c3b2e; color: #fff3ee; border-color: #b65a48; }
+.paidbar { font-size: 12px; display: inline-flex; align-items: center; gap: 8px; padding: 3px 4px 3px 10px; border-radius: 999px; border: 1px solid var(--panel-edge); }
+.paidbar.off { color: var(--muted); padding-right: 10px; }
+.paidbar.on { color: #f6d39a; border-color: #b65a48; background: rgba(182, 90, 72, 0.18); }
+.paidbar .btn { padding: 3px 10px; font-size: 12px; }
+.rw-conn.paid { background: rgba(217, 164, 65, 0.12); color: #f0dcb5; }
+.rw-conn .paid-note { color: #f6d39a; }
+.rw-billing { border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 10px; padding: 4px 10px 10px; margin-bottom: 10px; }
+.rw-billing.on { border-color: #b65a48; }
+.rw-billing h4 { margin-top: 8px; }
+.rw-billing .row { display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+.rw-confirm { margin-top: 8px; padding: 10px; border-radius: 10px; border: 1px solid var(--gold); background: rgba(217, 164, 65, 0.08); font-size: 13px; }
+.rw-confirm ul { margin: 6px 0; padding-left: 18px; list-style: disc; color: var(--muted); }
+.rw-confirm li { margin: 3px 0; }
 .rw-asks { display: grid; gap: 8px; margin: 6px 0; max-height: 45%; overflow: auto; }
 .rw-ask { border: 1px solid var(--gold); background: rgba(217, 164, 65, 0.1); border-radius: 10px; padding: 9px; font-size: 13px; }
 .rw-ask .actions, .approvals .actions { display: flex; gap: 6px; margin-top: 6px; }

@@ -1,5 +1,6 @@
 // Resident status is derived only from real doctor results and verification records, never assumed.
 import type { IntegrationResult } from '../../integrations/types.ts';
+import type { BillingInfo } from './billing.ts';
 import type { Registries, Resident } from './registry.ts';
 
 export type ResidentStatus = 'untested' | 'disconnected' | 'connected';
@@ -19,6 +20,8 @@ export type ResidentView = {
   provider: string;
   model: string | null;
   tools: string[];
+  /** Provider billing and whether paid use is allowed (added by the Village). */
+  billing?: BillingInfo;
 };
 
 export function residentStatus(r: Resident, reg: Registries, results: Map<string, IntegrationResult> | null): Pick<ResidentView, 'status' | 'reasons' | 'parts'> {

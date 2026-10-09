@@ -21,6 +21,7 @@ export class ResidentWindow {
   private loadSeq = 0;
   private reloadTimer: number | null = null;
   private notice = '';
+  private confirmPaid = false;
   // persistent elements for the current resident
   private body!: HTMLElement;
   private textarea!: HTMLTextAreaElement;
@@ -50,7 +51,10 @@ export class ResidentWindow {
     const here = all.filter((r: any) => r.building === b);
     const pick = resident ?? [...here].sort((a: any, c: any) => Number(c.focus) - Number(a.focus))[0];
     if (!pick) return;
-    if (this.id !== pick.id) this.tab = 'chat';
+    if (this.id !== pick.id) {
+      this.tab = 'chat';
+      this.confirmPaid = false;
+    }
     this.building = pick.building;
     this.switchTo(pick.id);
   }
@@ -180,9 +184,12 @@ export class ResidentWindow {
     const prevList = this.body.querySelector<HTMLElement>('.rw-msgs');
     const stick = !prevList || nearBottom(prevList);
     const blocker: string | null = d.chat.blocker;
-    const conn = blocker
-      ? el('div', { class: 'rw-conn off' }, el('strong', {}, "Can't receive messages. "), blocker, ' ', el('button', { class: 'btn ghost', type: 'button', onclick: () => $('#doctor').click() }, 'Check integrations'))
-      : el('div', { class: 'rw-conn on' }, el('strong', {}, 'Connected. '), `Replies come from ${d.profile.runtime?.displayName ?? r.runtime}.`, d.profile.provider?.billing === 'paid-api' ? ' Each reply is billed to your API account.' : '');
+    const paidOff = !!blocker && d.billing?.paid && !d.billing.allowed && blocker.startsWith('Paid use is off');
+    const conn = paidOff
+      ? el('div', { class: 'rw-conn paid' }, el('strong', {}, 'Paid use is off. '), `${r.displayName} uses the ${d.billing.providerName}, which bills per use, so nothing is sent until you allow it. `, el('button', { class: 'btn ghost', type: 'button', onclick: () => { this.tab = 'profile'; this.confirmPaid = true; this.render(); } }, 'Review paid use'))
+      : blocker
+        ? el('div', { class: 'rw-conn off' }, el('strong', {}, "Can't receive messages. "), blocker, ' ', el('button', { class: 'btn ghost', type: 'button', onclick: () => $('#doctor').click() }, 'Check integrations'))
+        : el('div', { class: 'rw-conn on' }, el('strong', {}, 'Connected. '), `Replies come from ${d.profile.runtime?.displayName ?? r.runtime}. `, d.billing?.paid ? el('span', { class: 'paid-note' }, `Paid use is on: each reply is billed to your ${d.billing.providerName} account.`) : (d.billing?.charges ?? ''));
     const msgs = d.chat.messages as any[];
     const partial = d.chat.partial as { replyId: string; text: string } | null;
     const list = el('ul', { class: 'rw-msgs', 'aria-live': 'polite' },
@@ -293,6 +300,48 @@ export class ResidentWindow {
     );
   }
 
+  /** Provider, billing method, whether actions may cost money, and the Allow paid use switch. */
+  private billingBlock(): HTMLElement {
+    const d = this.detail;
+    const b = d.billing;
+    const name = d.resident.displayName;
+    const kindLabel: Record<string, string> = { 'paid-api': 'Paid API, billed per use', subscription: 'Subscription (no per-use charges)', 'free-local': 'Free, runs on this machine' };
+    const set = async (allowed: boolean) => {
+      try {
+        await api('PUT', `/api/residents/${encodeURIComponent(d.resident.id)}/paid-use`, allowed ? { allowed: true, acknowledge: true } : { allowed: false });
+        this.confirmPaid = false;
+      } catch (e) {
+        this.notice = (e as Error).message;
+      }
+      this.load();
+    };
+    const when = b.changedAt ? ` (since ${new Date(b.changedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })})` : '';
+    let control: HTMLElement | null = null;
+    if (b.paid && b.allowed) control = el('div', { class: 'row' }, el('button', { class: 'btn danger', type: 'button', onclick: () => set(false) }, 'Turn paid use off'), el('span', { class: 'hint' }, 'Takes effect immediately and stops a paid reply in progress.'));
+    else if (b.paid && this.confirmPaid)
+      control = el('div', { class: 'rw-confirm' },
+        el('strong', {}, `Allow ${name} to make requests billed to your ${b.providerName} account?`),
+        el('ul', {},
+          el('li', {}, `Every reply ${name} writes is a billed request. The village will not stop at a spending limit yet, so set a monthly limit in your provider's dashboard.`),
+          el('li', {}, `${name}'s planned budget: $${d.profile.budget.perTaskUsd} per task, $${d.profile.budget.dailyUsd} per day (shown for reference; not enforced yet).`),
+          el('li', {}, 'Only this resident is affected. You can turn it off at any time, including from the top bar.'),
+        ),
+        el('div', { class: 'row' }, el('button', { class: 'btn primary', type: 'button', onclick: () => set(true) }, `Allow paid use for ${name}`), el('button', { class: 'btn ghost', type: 'button', onclick: () => { this.confirmPaid = false; this.render(); } }, 'Cancel')),
+      );
+    else if (b.paid) control = el('div', { class: 'row' }, el('button', { class: 'btn ghost', type: 'button', onclick: () => { this.confirmPaid = true; this.render(); } }, 'Allow paid use…'));
+    return el('div', { class: `rw-billing ${b.paid ? (b.allowed ? 'on' : 'off') : 'free'}` },
+      el('h4', {}, 'Billing'),
+      el('table', { class: 'rw-profile' },
+        el('tr', {}, el('th', {}, 'Provider'), el('td', {}, b.providerName)),
+        el('tr', {}, el('th', {}, 'Billing'), el('td', {}, kindLabel[b.kind] ?? b.kind)),
+        el('tr', {}, el('th', {}, 'Costs money?'), el('td', {}, b.charges)),
+        b.paid ? el('tr', {}, el('th', {}, 'Paid use'), el('td', {}, el('span', { class: `badge ${b.allowed ? 'installed' : 'unavailable'}` }, b.allowed ? 'allowed' : 'off'), when)) : null,
+      ),
+      control,
+      b.paid ? el('div', { class: 'hint' }, 'API keys stay on Village Hall (in your .env). They are never sent to this page.') : null,
+    );
+  }
+
   /** One approval: what exactly the resident wants to do, and Approve / Deny. */
   private approvalCard(a: any, compact: boolean): HTMLElement {
     const det = a.detail ?? {};
@@ -318,6 +367,7 @@ export class ResidentWindow {
     const row = (k: string, ...v: (Node | string | null)[]) => el('tr', {}, el('th', {}, k), el('td', {}, ...v));
     const billing: Record<string, string> = { 'paid-api': 'paid API (billed per use)', subscription: 'subscription', 'free-local': 'free, runs locally' };
     this.body.replaceChildren(
+      this.billingBlock(),
       el('table', { class: 'rw-profile' },
         row('Role', r.role),
         row('Lives at', this.places.get(r.building) ?? r.building),

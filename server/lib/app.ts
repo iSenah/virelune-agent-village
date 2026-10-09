@@ -2,6 +2,7 @@
 import type { IntegrationResult } from '../../integrations/types.ts';
 import path from 'node:path';
 import { Approvals } from './approvals.ts';
+import { BillingGuard } from './billing.ts';
 import { ChatService, type AgentAdapter } from './chat.ts';
 import type { VillageConfig } from './config.ts';
 import { openDb, tx, type DB } from './db.ts';
@@ -22,6 +23,8 @@ export class Village {
   readonly tasks: TaskEngine;
   readonly gateway: ToolGateway;
   readonly chat: ChatService;
+  /** Paid API safeguards: per-resident "Allow paid use", off by default. */
+  readonly billing: BillingGuard;
   /** Runtime adapters by runtime kind. Only real adapters are ever registered; none means nobody can answer. */
   readonly adapters: Map<string, AgentAdapter>;
   registries: Registries;
@@ -36,6 +39,7 @@ export class Village {
     this.registries = opts.registries ?? loadRegistries(config.configDir);
     this.approvals = new Approvals(this.db, this.events);
     this.settings = new Settings(this.db, this.events);
+    this.billing = new BillingGuard(this.db, this.events, () => this.registries);
     this.doctorResults = latestDoctorResults(this.events, config.machineName);
     this.tasks = new TaskEngine(this.db, this.events, (id) => {
       const v = this.residents().find((r) => r.id === id);
@@ -54,7 +58,9 @@ export class Village {
     });
     const adapters = typeof opts.adapters === 'function' ? opts.adapters(this) : (opts.adapters ?? []);
     this.adapters = new Map(adapters.map((a) => [a.runtimeKind, a]));
-    this.chat = new ChatService({ db: this.db, events: this.events, registries: () => this.registries, residents: () => this.residents(), adapters: this.adapters, replyTimeoutMs: opts.chatReplyTimeoutMs });
+    this.chat = new ChatService({ db: this.db, events: this.events, registries: () => this.registries, residents: () => this.residents(), adapters: this.adapters, billing: this.billing, replyTimeoutMs: opts.chatReplyTimeoutMs });
+    // Switching paid use off stops a paid reply that is in progress right away.
+    this.billing.onRevoked = (id) => this.chat.stop(id, 'switching paid use off');
   }
 
   /** Startup: record the boot, report registry problems, recover interrupted work. */
@@ -69,7 +75,7 @@ export class Village {
   }
 
   residents(): ResidentView[] {
-    return residentViews(this.registries, this.doctorResults);
+    return residentViews(this.registries, this.doctorResults).map((v) => ({ ...v, billing: this.billing.info(v.id) }));
   }
 
   /** The folder a resident works in: the sandbox repo if configured, else its own folder under data/workspaces. */

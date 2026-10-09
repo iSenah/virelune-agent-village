@@ -117,6 +117,10 @@ export function describeEvent(e: EventLike, names: Map<string, string>): string 
       return `${who(e.actor)} used ${p.server}: ${p.tool}`;
     case 'runtime.request_declined':
       return `Declined automatically for ${who(String(p.resident))}: ${p.what} ${p.reason}`;
+    case 'billing.paid_use_changed':
+      return `Paid use ${p.allowed ? 'allowed' : 'switched off'} for ${who(String(p.resident))}`;
+    case 'billing.request_denied':
+      return `Paid request refused for ${who(String(p.resident))}: paid use is off`;
     case 'lease.acquired':
       return `${who(e.actor)} took the key to ${p.server}`;
     case 'lease.released':

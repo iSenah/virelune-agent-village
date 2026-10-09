@@ -2,6 +2,7 @@
 // A message reaches a resident only when the resident is connected (real doctor checks) AND an adapter for its
 // runtime is enabled. Otherwise the message is stored as "undelivered" with the honest reason, and nothing replies.
 import crypto from 'node:crypto';
+import type { BillingGuard } from './billing.ts';
 import type { DB } from './db.ts';
 import { tx } from './db.ts';
 import type { EventLog } from './events.ts';
@@ -46,6 +47,11 @@ export type AdapterContext = {
   signal: AbortSignal;
   /** Stream partial text as it arrives (optional). */
   onDelta: (text: string) => void;
+  /**
+   * Adapters for paid providers call this right before every provider request. It throws (and records a denied
+   * request) if paid use is not allowed for this resident, e.g. because it was just switched off.
+   */
+  assertPaidAllowed: () => void;
 };
 export type AdapterReply = { text: string; threadState?: string | null };
 
@@ -63,6 +69,7 @@ type Deps = {
   registries: () => Registries;
   residents: () => ResidentView[];
   adapters: Map<string, AgentAdapter>;
+  billing: BillingGuard;
   replyTimeoutMs?: number;
 };
 
@@ -85,7 +92,7 @@ export class ChatService {
     }
     const rt = this.d.registries().runtimes.get(r.runtime);
     if (!rt || !this.d.adapters.has(rt.kind)) return `${r.displayName}'s integrations pass their checks, but the ${rt?.displayName ?? r.runtime} adapter is not enabled yet, so nothing can answer.`;
-    return null;
+    return this.d.billing.blocker(residentId);
   }
 
   isBusy(residentId: string): boolean {
@@ -127,6 +134,8 @@ export class ChatService {
       this.d.db.prepare('INSERT INTO chat_messages (id, resident, thread, role, body, status, reason, run_id, reply_to, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(id, residentId, 'main', 'human', body, 'pending', null, null, null, now, now);
       this.d.events.append({ type: 'chat.message_sent', actor, payload: { messageId: id, resident: residentId, chars: body.length } });
       if (blocker) {
+        // A refusal because paid use is off is also recorded as a denied billable request.
+        if (blocker === this.d.billing.blocker(residentId)) this.d.billing.authorize(residentId, 'chat reply', { messageId: id });
         this.setStatus(id, 'undelivered', blocker);
         this.d.events.append({ type: 'chat.message_undelivered', actor: 'system', payload: { messageId: id, resident: residentId, reason: blocker } });
       }
@@ -177,7 +186,7 @@ export class ChatService {
       this.d.events.ephemeral('chat.delta', { resident: r.id, replyId, text });
     };
     Promise.resolve()
-      .then(() => adapter.reply({ resident: r, runId, message: body, history, threadState, signal: controller.signal, onDelta }))
+      .then(() => adapter.reply({ resident: r, runId, message: body, history, threadState, signal: controller.signal, onDelta, assertPaidAllowed: () => this.d.billing.assertAllowed(r.id, 'chat reply', { runId, messageId }) }))
       .then((out) => {
         if (controller.signal.aborted) throw controller.signal.reason;
         const text = typeof out?.text === 'string' ? out.text : '';

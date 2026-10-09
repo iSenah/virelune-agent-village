@@ -159,6 +159,7 @@ function render() {
   if (!s) return;
   $('#machine').textContent = `${s.machine} · ${s.platform} · ${s.residents.length} residents registered`;
   renderAutonomy();
+  renderPaid();
   renderResidents();
   renderFeed();
   renderTasks();
@@ -169,6 +170,25 @@ function render() {
     ? `${activeRuns.size} real run${activeRuns.size === 1 ? '' : 's'} in progress. Everything that looks like work comes from real events.`
     : 'No resident is working right now. Every sign of work in the village comes from real backend events; lanterns, weather and the clock are ambient.';
   scene?.update(s.residents, deriveVisuals(s.residents, store.events));
+}
+
+/** Top bar: which residents may spend money right now, and an emergency stop. */
+function renderPaid() {
+  const s = store.state!;
+  const on = s.residents.filter((r: any) => r.billing?.allowed);
+  const box = $('#paid');
+  if (!on.length) {
+    box.className = 'paidbar off';
+    box.title = 'No resident may make billed requests. Paid residents (Claude, Echo and their variants) need "Allow paid use" in their Profile.';
+    box.replaceChildren('Paid use: off');
+    return;
+  }
+  box.className = 'paidbar on';
+  box.title = 'These residents may make requests billed to your API accounts.';
+  box.replaceChildren(
+    `Paid use on: ${on.map((r: any) => r.displayName).join(', ')}`,
+    el('button', { class: 'btn danger', type: 'button', onclick: () => api('POST', '/api/paid-use/disable-all').catch((e) => alertLine(e.message)) }, 'Stop all paid use'),
+  );
 }
 
 function renderAutonomy() {
@@ -214,7 +234,7 @@ function renderResidents() {
           .map((r) =>
             el('li', { class: selected?.resident === r.id ? 'selected' : '', onclick: () => pick(r.building, r.id) },
               el('span', { class: `dot ${r.status}` }),
-              el('span', { class: 'name' }, r.displayName, r.focus ? el('span', { class: 'tag' }, 'focus') : null, answering.has(r.id) ? el('span', { class: 'tag busy' }, 'working') : null),
+              el('span', { class: 'name' }, r.displayName, r.focus ? el('span', { class: 'tag' }, 'focus') : null, answering.has(r.id) ? el('span', { class: 'tag busy' }, 'working') : null, r.billing?.allowed ? el('span', { class: 'tag paid', title: 'Paid use allowed' }, 'paid') : null),
               el('span', { class: 'why' }, r.status === 'connected' ? 'Connected: integration checks passed' : r.reasons[0] ?? ''),
             ),
           ),

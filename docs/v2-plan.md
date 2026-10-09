@@ -26,7 +26,7 @@ Smaller notes for later: the browser loads up to 5,000 past events at startup (f
 ## Phases
 
 1. **Interactive resident chat** (done). Every resident opens from its figure, its building, or the residents list. The window has Chat, Tasks, Approvals and Profile tabs. History is stored in Village Hall's database. A message is delivered only to a connected resident with an enabled adapter; otherwise it is saved as "not delivered" with the reason, and nothing replies.
-2. **Real agent integrations.** 2A (built; Windows fixes in; waiting on your PC check): Codex through the Codex app-server, using the isolated Codex home and the Tool Gateway. Then Claude (Claude Agent SDK, Anthropic API key) and Echo (OpenAI Agents SDK, OpenAI API key), each behind a per-resident paid-use switch. Aura, Blender and Unreal MCP are investigated with real handshakes and stay disconnected until those pass.
+2. **Real agent integrations.** 2A (built; Windows fixes in; waiting on your PC check): Codex through the Codex app-server, using the isolated Codex home and the Tool Gateway. 2B (done): per-resident paid-use switch. Then 2C: Claude (Claude Agent SDK, Anthropic API key) and Echo (OpenAI Agents SDK, OpenAI API key), behind that switch. Aura, Blender and Unreal MCP are investigated with real handshakes and stay disconnected until those pass.
 3. **Supervised delegation.** Echo proposes a plan; you approve it; tasks run Echo → Claude → Codex → Echo in `virelune-sandbox`, every step an event.
 4. **Activity visualization.** Building lights, resident indicators and notifications for chat runs, task runs and approvals, keeping ambient life separate from real work.
 
@@ -76,6 +76,20 @@ You can delete any leftover `virelune-codex-verify-*` folders in `%TEMP%`.
 | Real Codex: starts, refuses an unsigned home, loads only the village gateway, and reports apps, plugins, browser and computer use **off** under the village launch settings | Automated tests against the real Codex CLI 0.161.0 (skipped where Codex is not installed) |
 | `codex_apps` absent while signed in with ChatGPT | **To verify on your PC** (step 6). Cloud tests cannot sign in to ChatGPT. If Codex ever shows it anyway, the village refuses to use Codex rather than continuing |
 | A real Codex reply through the village, and an approved file operation in virelune-sandbox | **To verify on your PC** (steps 6 to 8) |
+
+## Phase 2B: paid API safeguards (done)
+
+Residents whose provider bills per use need **Allow paid use** switched on before any request can be made. These are Claude, Claude · Blender and Claude · Unreal (Anthropic API) and Echo (OpenAI API).
+
+- **Off by default** for every paid resident, on every machine. Setup never turns it on, and no `.env` setting can. The only way is the switch in the resident's Profile, which first asks you to confirm that replies will be billed to your account (the API requires `acknowledge: true`).
+- **Enforced by Village Hall** before every billable request: chat replies now, task runs in Phase 3. Adapters must check again right before each provider call (`assertPaidAllowed`), so switching it off between two calls in a tool loop also blocks the second.
+- **Off works immediately.** Turning paid use off stops a paid reply in progress. **Stop all paid use** in the top bar switches every resident off at once.
+- **One switch per resident.** Allowing Claude does not allow Claude · Blender, Claude · Unreal or Echo.
+- **Logged.** `billing.paid_use_changed` records every change (who, when, which resident). `billing.request_denied` records every refused request (resident, provider, purpose, message or run).
+- **Visible.** Each Profile has a Billing section (provider, billing method, whether actions can cost money, the switch and since when). The chat says when a message was held back because paid use is off. The top bar shows who may spend money right now, and the residents list tags them "paid".
+- **Not affected.** Codex uses your ChatGPT plan (subscription), so it has no paid switch and still refuses API-key sign-ins. Scribe (Ollama) is free and local; Aura is a subscription.
+- **Keys stay on the server.** API keys live only in Village Hall's `.env`. A test checks that the state, resident, event, doctor and page responses never contain them, and that `.env` and the database are never served.
+- **Budgets.** Each resident's per-task and daily budget is shown when you allow paid use, but it is **not enforced yet**. Set a monthly spending limit in your provider's dashboard.
 
 ## Verify your first real Codex conversation (Windows)
 
