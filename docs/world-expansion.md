@@ -86,3 +86,24 @@ The marker disappears on its own; the plinth, sign, lamps and road stay.
   - clicking a building with residents opens their window (Gemini's explains it is planned);
   - clicking a shared workplace or service slot opens its place card;
   - lamp posts in the new districts can be selected and turned like the others.
+
+## Milestone 6: optimization and testing (done)
+
+- Lamp posts far from the camera use a light stand-in (see [performance-audit.md](performance-audit.md)). The expanded overview now costs **542k triangles at High**, down from 973k and below the 857k before the expansion. Low is 470k, with no shadows and fewer pixels.
+- Tests (119 in total, 116 run here, three need the real Codex CLI):
+  - the layout is valid;
+  - the Heights' stairs meet the cliff edge and the waterfalls stay clear of them;
+  - squares sit clear of buildings;
+  - slots never get a stand-in house, and their markers retire when a model loads;
+  - the fallback layout matches Founders' Square;
+  - every browser module compiles.
+- Checked in the browser:
+  - each district, by day and night;
+  - the Go to menu and keys;
+  - clicking a planned home on the Heights (Gemini's window) and a workplace (Blender House's place card);
+  - the slot markers and the layout guides.
+
+### Still to check on your PC
+
+- Frame rate in the overview and at a district, at High and at Low (**G** shows it). The cloud workspace renders in software, so frame rates there say nothing.
+- That the layout looks right at your screen size, with and without the side panels (**P**).

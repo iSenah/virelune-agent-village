@@ -66,3 +66,21 @@ Presets never remove buildings, residents, lamps, trees, rocks, water or any oth
 - A second, lighter lamp model made in Blender (the automatic simplifier cannot keep its UVs below 12k triangles).
 - Compressed textures (KTX2) would cut GPU memory further, but they need a texture encoder that is not available in the cloud workspace.
 - A paged event log in the browser, once the log grows large (not a rendering cost).
+
+## After the world expansion (October 2026)
+
+The village grew from one square to five districts: 12 building slots, a raised plateau with cliffs and waterfalls, five bridges, three flagstone squares, and about twice the trees. Measured the same way (overview, all models loaded):
+
+| | Before the expansion | Expanded, before tuning | Expanded, now |
+| --- | --- | --- | --- |
+| High | 205 draws, 857k triangles | 221 draws, 973k | 241 draws, **542k** |
+| Medium | 832k | 937k | 506k |
+| Low | 806k | 901k | 470k |
+
+- **Lamp posts got distance detail.** Posts within 70 m of the camera (54 m at Medium, 30 m at Low) use the full model, one instanced draw. The rest share a second instanced draw of a light stand-in (about 100 triangles instead of 12k), with the same height, colours, lantern position and glow. In the overview the 36 posts cost 2k triangles instead of 434k. Up close nothing changes.
+- **All cobble roads are batched** into three draw calls for the whole village, instead of three per road.
+- **New scenery is instanced or merged:** cliff boulders, railings, flagstones, props, the woods' pines and rocks. The plateau is a single mesh.
+- **Effects stay cheap.** There are no new lights. The woods' mist is three sprites, and the waterfalls reuse the animated water textures. The only shadow-casting light is still the sun. Its shadow now follows the camera and widens when zoomed out, and it is redrawn only when something moves.
+- The extra draw calls come mostly from development markers and signboards on the five model-less slots. They go away as models arrive.
+
+Close-up costs are unchanged: about 900k triangles at a building's door, because buildings and residents near the camera are drawn at full detail.

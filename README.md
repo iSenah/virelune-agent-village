@@ -114,7 +114,7 @@ Residents, runtimes, providers, tool servers and playbooks are JSON manifests in
 npm test
 ```
 
-107 tests cover the registries, event log, task engine, approvals, Echo autonomy, resident chat, the Codex, Claude and Echo adapters, paid-use authorization, the API, the village's event-to-visual mapping, the custom models and their distance versions, graphics presets, the village layout, exports and secrets, and the Tool Gateway's security boundaries. Three tests drive the real Codex CLI (gateway-only isolation, built-in tool sources switched off, refusing an unsigned village home); they are reported as skipped (not passed) when Codex is not installed. None of the tests use your Codex sign-in.
+119 tests cover the registries, event log, task engine, approvals, Echo autonomy, resident chat, the Codex, Claude and Echo adapters, paid-use authorization, the API, the village's event-to-visual mapping, the custom models and their distance versions, graphics presets, the village layout, exports and secrets, and the Tool Gateway's security boundaries. Three tests drive the real Codex CLI (gateway-only isolation, built-in tool sources switched off, refusing an unsigned village home); they are reported as skipped (not passed) when Codex is not installed. None of the tests use your Codex sign-in.
 
 ## Export without GitHub
 
@@ -147,17 +147,21 @@ Experimental agent tasks run in the separate **virelune-sandbox** repository, ne
 | Zoom | Scroll wheel | + / - |
 | Open a resident's window | Click its figure or building, or its name in the left panel | |
 | Fly to a building | Double-click it, or click a resident in the left panel | |
-| Back to the overview | | Home or 0 |
+| Back to the overview | **Go to → Whole village** | Home or 0 |
+| Fly to a district or building | **Go to** button in the top bar | 1 to 5 (districts) |
+| Building info for workplaces and service slots | Click the building (opens its place card) | |
 | Show or hide panels | | P |
 | Graphics quality (Auto, High, Medium, Low) | **Graphics** button in the top bar | |
 | Frame rate and graphics diagnostics | **Graphics → Show diagnostics** | G |
+| Development markers on building slots | **Graphics → Show building slots** (on until each model arrives) | |
+| Walk paths, entrances, indicator space | **Graphics → Show layout guides** | |
 | Turn a lamp post | Click it, then use the arrow buttons | [ / ] (Shift for 5°), Esc when done |
 
 The village lowers its render resolution automatically on slower GPUs and restores it when there is headroom. **Graphics: Auto** also steps down to Medium or Low only if frames stay slow; you can pick a preset yourself. See [docs/performance-audit.md](docs/performance-audit.md).
 
 ## Art and 3D models
 
-The village uses custom textured models for all seven buildings, the street lamps and five residents (Echo, Claude, Codex, Aura, Scribe), listed in `web/assets/models/manifest.json` (see [web/assets/models/README.md](web/assets/models/README.md)). Procedural placeholders show while models load and stay in place for any model that fails to load. Disconnected or unchecked residents are dimmed and their buildings slightly darker; a connected resident is shown at full colour with a soft ring at its feet. There are no work animations unless a real run is in progress. The fountain, river, waterfalls, bridges, fences and lamps are ambient scenery built after the hub concept; none of it reacts to agent work. Press **G** (or **Graphics → Show diagnostics**) for frame rate, draw calls, triangles and what each part of the village costs. Buildings and residents use a lighter copy of their model when far from the camera, so the overview stays fast.
+The village has five districts: Founders' Square, Creative Workshops, the Artisan Quarter, Scholars' Heights and the Forgotten Woods. It uses custom textured models for the seven original buildings, the street lamps and five residents (Echo, Claude, Codex, Aura, Scribe), listed in `web/assets/models/manifest.json` (see [web/assets/models/README.md](web/assets/models/README.md)). Procedural placeholders show while models load and stay in place for any model that fails to load. Disconnected or unchecked residents are dimmed and their buildings slightly darker; a connected resident is shown at full colour with a soft ring at its feet. There are no work animations unless a real run is in progress. The fountain, river, waterfalls, bridges, fences and lamps are ambient scenery built after the hub concept; none of it reacts to agent work. Press **G** (or **Graphics → Show diagnostics**) for frame rate, draw calls, triangles and what each part of the village costs. Buildings, residents and lamp posts use a lighter version when far from the camera, so the overview stays fast. The five newer building slots (Tripo Stable, Runway Cinema, Gemini Observatory, Copilot Commandery, DeepSeek Gothic Cottage) show development markers until their models arrive; see [docs/world-expansion.md](docs/world-expansion.md) for how to add them.
 
 | District | Building | Who |
 | --- | --- | --- |

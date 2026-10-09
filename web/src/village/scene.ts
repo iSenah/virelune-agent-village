@@ -360,6 +360,8 @@ export class VillageScene {
     });
     this.lodFactor = p.id === 'high' ? 1 : p.id === 'medium' ? 0.6 : 0;
     setLodScale(this.scene, this.lodFactor);
+    // lamp posts use the full model within 70 m at High, 54 m at Medium, 30 m at Low
+    this.lamps?.setDetailDistance(30 + 40 * this.lodFactor);
     this.shadowDirty = true;
     this.onGraphics({ choice: this.graphicsChoice, preset: p });
   }
@@ -787,6 +789,7 @@ export class VillageScene {
     }
     this.clampTarget();
     this.controls.update();
+    this.lamps.updateDetail(this.camera.position);
     if (this.sun.castShadow) this.fitShadows();
     // ---- ambient (not tied to agent activity) ----
     this.hub.update(t);
